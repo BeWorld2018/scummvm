@@ -34,6 +34,10 @@
 #include "graphics/pixelformat.h"
 
 #ifdef USE_JPEG
+#ifdef __MORPHOS__
+#include <proto/jfif.h>
+#include <jerror.h>
+#else
 // The original release of libjpeg v6b did not contain any extern "C" in case
 // its header files are included in a C++ environment. To avoid any linking
 // issues we need to add it on our own.
@@ -41,6 +45,55 @@ extern "C" {
 #include <jpeglib.h>
 #include <jerror.h>
 }
+#endif
+#endif
+
+#ifdef __MORPHOS__
+const char *const my_std_message_table[] = {
+	NULL
+};
+
+static void my_reset_error_mgr(j_common_ptr cinfo)
+{
+	cinfo->err->num_warnings=0;
+	cinfo->err->msg_code=0;
+}
+
+static void format_no_message(j_common_ptr cinfo, char *buffer)
+{
+
+}
+
+static void emit_no_message(j_common_ptr cinfo, int msg_level)
+{
+
+}
+
+static void my_error_exit(j_common_ptr cinfo);
+static void output_no_message(j_common_ptr cinfo);
+
+static struct jpeg_error_mgr *my_std_error(struct jpeg_error_mgr *err)
+{
+	err->error_exit = my_error_exit;
+	err->emit_message = emit_no_message;
+	err->output_message = output_no_message;
+	err->format_message = format_no_message;
+	err->reset_error_mgr = my_reset_error_mgr;
+
+	err->trace_level = 0;
+	err->num_warnings = 0;
+	err->msg_code = 0;
+
+	err->jpeg_message_table = my_std_message_table;
+	err->last_jpeg_message = 0;
+
+	err->addon_message_table = NULL;
+	err->first_addon_message = 0;
+	err->last_addon_message = 0;
+
+	return err;
+}
+
 #endif
 
 namespace Image {
@@ -237,7 +290,11 @@ bool JPEGDecoder::loadStream(Common::SeekableReadStream &stream) {
 	jpeg_error_mgr jerr;
 
 	// Initialize error handling callbacks
+	#ifdef __MORPHOS__
+	cinfo.err = my_std_error(&jerr);
+	#else
 	cinfo.err = jpeg_std_error(&jerr);
+	#endif
 	cinfo.err->error_exit = &errorExit;
 	cinfo.err->output_message = &outputMessage;
 

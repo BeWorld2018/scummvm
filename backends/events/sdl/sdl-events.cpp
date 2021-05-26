@@ -732,7 +732,7 @@ void SdlEventSource::openJoystick(int joystickIndex) {
 #if SDL_VERSION_ATLEAST(2, 0, 0)
 		if (SDL_IsGameController(joystickIndex)) {
 			_controller = SDL_GameControllerOpen(joystickIndex);
-			debug("Using game controller: %s", SDL_GameControllerName(_controller));
+			//debug("Using game controller: %s", SDL_GameControllerName(_controller));
 		} else
 #endif
 		{
