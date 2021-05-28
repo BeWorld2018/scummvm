@@ -252,23 +252,11 @@ SDL_Surface *copySDLSurface(SDL_Surface *src) {
 		}
 	}
 	
-#ifdef __MORPHOS__
-    SDL_Surface *res = SDL_CreateRGBSurface(0, 0, 0, src->format->BitsPerPixel, src->format->Rmask, src->format->Gmask,
-	                       src->format->Bmask, src->format->Amask);
-    if (res != NULL) {
-        res->flags |= SDL_PREALLOC;
-        res->pixels = src->pixels;
-        res->w =  src->w;
-        res->h =  src->h;
-        res->pitch =  src->pitch;
-        SDL_SetClipRect(res, NULL);
-    }
-#else
 	SDL_Surface *res = SDL_CreateRGBSurfaceFrom(src->pixels,
 	                       src->w, src->h, src->format->BitsPerPixel,
 	                       src->pitch, src->format->Rmask, src->format->Gmask,
 	                       src->format->Bmask, src->format->Amask);
-#endif
+
 	if (locked) {
 		SDL_UnlockSurface(src);
 	}

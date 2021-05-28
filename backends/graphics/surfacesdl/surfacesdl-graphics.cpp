@@ -1857,19 +1857,8 @@ void SurfaceSdlGraphicsManager::setMouseCursor(const void *buf, uint w, uint h, 
 			const Uint32 gMask = ((0xFF >> format->gLoss) << format->gShift);
 			const Uint32 bMask = ((0xFF >> format->bLoss) << format->bShift);
 			const Uint32 aMask = ((0xFF >> format->aLoss) << format->aShift);
-#ifdef __MORPHOS__
-			_mouseSurface = _mouseOrigSurface = SDL_CreateRGBSurface(0, 0, 0, format->bytesPerPixel * 8, rMask, gMask, bMask, aMask);
-			if (_mouseSurface != NULL) {
-				_mouseSurface->flags |= SDL_PREALLOC;
-				_mouseSurface->pixels = const_cast<void *>(buf);
-				_mouseSurface->w = w;
-				_mouseSurface->h = h;
-				_mouseSurface->pitch = w * format->bytesPerPixel;
-				SDL_SetClipRect(_mouseSurface, NULL);
-			}
-#else
 			_mouseSurface = _mouseOrigSurface = SDL_CreateRGBSurfaceFrom(const_cast<void *>(buf), w, h, format->bytesPerPixel * 8, w * format->bytesPerPixel, rMask, gMask, bMask, aMask);
-#endif	
+
 		} else {
 			assert(!_mouseOrigSurface);
 
