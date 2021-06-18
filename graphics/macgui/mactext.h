@@ -190,6 +190,8 @@ public:
 
 private:
 	void appendText_(const Common::U32String &strWithFont, uint oldLen);
+	void deletePreviousCharInternal(int *row, int *col);
+	void insertTextFromClipboard();
 
 public:
 	void appendTextDefault(const Common::U32String &str, bool skipAdd = false);
@@ -203,6 +205,7 @@ public:
 	int getLineHeight(int line);
 	int getTextMaxWidth() { return _textMaxWidth; }
 
+	void deleteSelection();
 	void deletePreviousChar(int *row, int *col);
 	void addNewLine(int *row, int *col);
 	void insertChar(byte c, int *row, int *col);
@@ -216,10 +219,17 @@ public:
 	Common::U32String cutSelection();
 	const SelectedText *getSelectedText() { return &_selectedText; }
 
+	/**
+	 * set the selection of mactext
+	 * @param pos pos of selection, 0 represent first, -1 represent the end of text
+	 * @param start selection start or selection end
+	 */
 	void setSelection(int pos, bool start);
 
 	Common::U32String getEditedString();
 	Common::U32String getText() { return _str; }
+
+	void setSelRange(int selStart, int selEnd) { _selStart = selStart, _selEnd = selEnd; }
 
 private:
 	void init();
@@ -252,7 +262,7 @@ private:
 
 	void scroll(int delta);
 
-	void drawSelection();
+	void drawSelection(int xoff, int yoff);
 	void updateCursorPos();
 
 	void startMarking(int x, int y);
@@ -281,6 +291,9 @@ protected:
 	int _maxWidth;
 	int _interLinear;
 	int _textShadow;
+
+	int _selEnd;
+	int _selStart;
 
 	int _textMaxWidth;
 	int _textMaxHeight;

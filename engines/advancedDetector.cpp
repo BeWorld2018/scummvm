@@ -121,10 +121,12 @@ static Common::String sanitizeName(const char *name, int maxLen) {
  * or (if ADGF_DEMO has been set)
  *   GAMEID-demo-PLAFORM-LANG
  */
-static Common::String generatePreferredTarget(const ADGameDescription *desc, int maxLen) {
+static Common::String generatePreferredTarget(const ADGameDescription *desc, int maxLen, Common::String targetID) {
 	Common::String res;
 
-	if (desc->flags & ADGF_AUTOGENTARGET && desc->extra && *desc->extra) {
+	if (!targetID.empty()) {
+		res = targetID;
+	} else if (desc->flags & ADGF_AUTOGENTARGET && desc->extra && *desc->extra) {
 		res = sanitizeName(desc->extra, maxLen);
 	} else {
 		res = desc->gameId;
@@ -153,7 +155,7 @@ static Common::String generatePreferredTarget(const ADGameDescription *desc, int
 	return res;
 }
 
-DetectedGame AdvancedMetaEngineDetection::toDetectedGame(const ADDetectedGame &adGame) const {
+DetectedGame AdvancedMetaEngineDetection::toDetectedGame(const ADDetectedGame &adGame, ADDetectedGameExtraInfo *extraInfo) const {
 	const ADGameDescription *desc = adGame.desc;
 
 	const char *title;
@@ -171,10 +173,20 @@ DetectedGame AdvancedMetaEngineDetection::toDetectedGame(const ADDetectedGame &a
 		extra = desc->extra;
 	}
 
+	if (extraInfo) {
+		if (!extraInfo->gameName.empty())
+			title = extraInfo->gameName.c_str();
+	}
+
 	DetectedGame game(getEngineId(), desc->gameId, title, desc->language, desc->platform, extra, ((desc->flags & (ADGF_UNSUPPORTED | ADGF_WARNING)) != 0));
 	game.hasUnknownFiles = adGame.hasUnknownFiles;
 	game.matchedFiles = adGame.matchedFiles;
-	game.preferredTarget = generatePreferredTarget(desc, _maxAutogenLength);
+
+	if (extraInfo && !extraInfo->targetID.empty()) {
+		game.preferredTarget = generatePreferredTarget(desc, _maxAutogenLength, extraInfo->targetID);
+	} else {
+		game.preferredTarget = generatePreferredTarget(desc, _maxAutogenLength, Common::String());
+	}
 
 	game.gameSupportLevel = kStableGame;
 	if (desc->flags & ADGF_UNSTABLE)
@@ -255,11 +267,19 @@ DetectedGames AdvancedMetaEngineDetection::detectGames(const Common::FSList &fsl
 
 	if (!foundKnownGames) {
 		// Use fallback detector if there were no matches by other means
-		ADDetectedGame fallbackDetectionResult = fallbackDetect(allFiles, fslist);
+		ADDetectedGameExtraInfo *extraInfo = nullptr;
+		ADDetectedGame fallbackDetectionResult = fallbackDetect(allFiles, fslist, &extraInfo);
 
 		if (fallbackDetectionResult.desc) {
-			DetectedGame fallbackDetectedGame = toDetectedGame(fallbackDetectionResult);
-			fallbackDetectedGame.preferredTarget += "-fallback";
+			DetectedGame fallbackDetectedGame = toDetectedGame(fallbackDetectionResult, extraInfo);
+
+			if (extraInfo != nullptr) {
+				// then it's our duty to free it
+				delete extraInfo;
+			} else {
+				// don't add fallback when we are specifying the targetID
+				fallbackDetectedGame.preferredTarget += "-fallback";
+			}
 
 			detectedGames.push_back(fallbackDetectedGame);
 		}
@@ -334,6 +354,9 @@ Common::Error AdvancedMetaEngineDetection::createInstance(OSystem *syst, Engine 
 	// Compose a hashmap of all files in fslist.
 	FileMap allFiles;
 	composeFileHashMap(allFiles, files, (_maxScanDepth == 0 ? 1 : _maxScanDepth));
+
+	// Clear md5 cache before each detection starts, just in case.
+	MD5Man.clear();
 
 	// Run the detector on this
 	ADDetectedGames matches = detectGame(files.begin()->getParent(), allFiles, language, platform, extra);

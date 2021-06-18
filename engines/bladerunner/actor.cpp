@@ -28,6 +28,7 @@
 #include "bladerunner/audio_speech.h"
 #include "bladerunner/bladerunner.h"
 #include "bladerunner/boundingbox.h"
+#include "bladerunner/crimes_database.h"
 #include "bladerunner/game_info.h"
 #include "bladerunner/items.h"
 #include "bladerunner/mouse.h"
@@ -262,10 +263,10 @@ void Actor::increaseFPS() {
 #endif // BLADERUNNER_ORIGINAL_BUGS
 }
 
-void Actor::timerStart(int timerId, int32 interval) {
+void Actor::timerStart(int timerId, int32 intervalMillis) {
 	assert(timerId >= 0 && timerId < kActorTimers);
 
-	_timersLeft[timerId] = interval;
+	_timersLeft[timerId] = intervalMillis;
 	_timersLast[timerId] = _vm->_time->current();
 }
 
@@ -375,14 +376,14 @@ void Actor::movementTrackNext(bool omitAiScript) {
 	bool hasNextMovement;
 	bool running;
 	int angle;
-	int32 delay;
+	int32 delayMillis;
 	int waypointId;
 	Vector3 waypointPosition;
 	bool arrived;
 
-	hasNextMovement = _movementTrack->next(&waypointId, &delay, &angle, &running);
+	hasNextMovement = _movementTrack->next(&waypointId, &delayMillis, &angle, &running);
 	_movementTrackNextWaypointId = waypointId;
-	_movementTrackNextDelay = delay;
+	_movementTrackNextDelay = delayMillis;
 	_movementTrackNextAngle = angle;
 	_movementTrackNextRunning = running;
 	if (hasNextMovement) {
@@ -392,26 +393,30 @@ void Actor::movementTrackNext(bool omitAiScript) {
 		int waypointSetId = _vm->_waypoints->getSetId(waypointId);
 		_vm->_waypoints->getXYZ(waypointId, &waypointPosition.x, &waypointPosition.y, &waypointPosition.z);
 		if (_setId == waypointSetId && waypointSetId == _vm->_actors[0]->_setId) {
+			// if target waypointSetId is in same set as both the actor and McCoy then call movementTrackWaypointReached
 			stopWalking(false);
 			_walkInfo->setup(_id, running, _position, waypointPosition, false, &arrived);
 
 			_movementTrackWalkingToWaypointId = waypointId;
-			_movementTrackDelayOnNextWaypoint = delay;
+			_movementTrackDelayOnNextWaypoint = delayMillis;
 			if (arrived) {
 				movementTrackWaypointReached();
 			}
 		} else {
+			// teleport to target waypoint's set and position anyway
+			// and schedule next movementTrackNext() using the kActorTimerMovementTrack
 			setSetId(waypointSetId);
 
 			setAtXYZ(waypointPosition, angle, true, false, false);
 
-			if (!delay) {
-				delay = 1;
+			if (!delayMillis) {
+				delayMillis = 1;
 			}
-			if (delay > 1) {
+			if (delayMillis > 1) {
 				changeAnimationMode(kAnimationModeIdle, false);
 			}
-			timerStart(kActorTimerMovementTrack, delay);
+
+			timerStart(kActorTimerMovementTrack, delayMillis);
 		}
 		//return true;
 	} else {
@@ -447,16 +452,31 @@ void Actor::movementTrackUnpause() {
 void Actor::movementTrackWaypointReached() {
 	if (!_movementTrack->isPaused() && _id != kActorMcCoy) {
 		if (_movementTrackWalkingToWaypointId >= 0 && _movementTrackDelayOnNextWaypoint >= 0) {
+#if !BLADERUNNER_ORIGINAL_BUGS
+			Vector3 waypointPosition;
+			int waypointSetId = _vm->_waypoints->getSetId(_movementTrackWalkingToWaypointId);
+			_vm->_waypoints->getXYZ(_movementTrackWalkingToWaypointId, &waypointPosition.x, &waypointPosition.y, &waypointPosition.z);
+			if (_setId != waypointSetId || waypointSetId != _vm->_actors[0]->_setId) {
+				// teleport to target waypoint's set and position anyway
+				// Code similar to movementTrackNext()
+				setSetId(waypointSetId);
+				if (_movementTrackNextAngle == -1) {
+					_movementTrackNextAngle = 0;
+				}
+				setAtXYZ(waypointPosition, _movementTrackNextAngle, true, false, false);
+			} else {
+				// Honor the heading defined by the AI_Movement_Track_Append_With_Facing method
+				if (_movementTrackNextAngle >= 0) {
+					faceHeading(_movementTrackNextAngle, true);
+				}
+			}
+#endif
 			if (!_movementTrackDelayOnNextWaypoint) {
 				_movementTrackDelayOnNextWaypoint = 1;
 			}
-#if !BLADERUNNER_ORIGINAL_BUGS
-			// Honor the heading defined by the AI_Movement_Track_Append_With_Facing method
-			if (_movementTrackNextAngle >= 0) {
-				faceHeading(_movementTrackNextAngle, true);
-			}
-#endif
+
 			if (_vm->_aiScripts->reachedMovementTrackWaypoint(_id, _movementTrackWalkingToWaypointId)) {
+				// schedule next movementTrackNext() using the kActorTimerMovementTrack
 				int32 delay = _movementTrackDelayOnNextWaypoint;
 				if (delay > 1) {
 					changeAnimationMode(kAnimationModeIdle, false);
@@ -489,7 +509,7 @@ void Actor::setAtXYZ(const Vector3 &position, int facing, bool snapFacing, bool 
 	}
 }
 
-void Actor::setAtWaypoint(int waypointId, int angle, int moving, bool retired) {
+void Actor::setAtWaypoint(int waypointId, int angle, bool moving, bool retired) {
 	Vector3 waypointPosition;
 	_vm->_waypoints->getXYZ(waypointId, &waypointPosition.x, &waypointPosition.y, &waypointPosition.z);
 	setAtXYZ(waypointPosition, angle, true, moving, retired);
@@ -1377,18 +1397,52 @@ bool Actor::hasClue(int clueId) const {
 	return _clues->isAcquired(clueId);
 }
 
+// This method is used exclusively for transfers from and to Mainframe.
+// It copies clues from this actor (_id) to a target actor (actorId).
+// Keep in mind that actors other than McCoy can also transfer clues to Mainframe (eg. Steele)
+// or retrieve from Mainframe (eg. Klein)
+// see: ScriptBase::Actor_Clues_Transfer_New_From_Mainframe()
+//      ScriptBase::Actor_Clues_Transfer_New_To_Mainframe()
+// In Restored Content it will skip transfering clues that are Intangible (default clue type)
+// since those clues do not actually show up in McCoy's KIA
 bool Actor::copyClues(int actorId) {
 	bool newCluesAcquired = false;
 	Actor *otherActor = _vm->_actors[actorId];
 	for (int i = 0; i < (int)_vm->_gameInfo->getClueCount(); ++i) {
 		int clueId = i;
-		if (hasClue(clueId) && !_clues->isPrivate(clueId) && otherActor->canAcquireClue(clueId) && !otherActor->hasClue(clueId)) {
+		if (hasClue(clueId)
+		    && !_clues->isPrivate(clueId)
+		    && (!_vm->_cutContent || _vm->_crimesDatabase->getAssetType(clueId) != kClueTypeIntangible)
+		    && otherActor->canAcquireClue(clueId)
+		    && !otherActor->hasClue(clueId)) {
 			int fromActorId = _id;
 			if (_id == BladeRunnerEngine::kActorVoiceOver) {
 				fromActorId = _clues->getFromActorId(clueId);
 			}
+			if (_vm->_cutContent
+			    && ((_id == BladeRunnerEngine::kActorVoiceOver && actorId == kActorMcCoy)
+			        || (_id == kActorMcCoy && actorId == BladeRunnerEngine::kActorVoiceOver) )) {
+				// when transfering a clue successfully between McCoy (playerActor) and Mainframe,
+				// we mark it as such, since if McCoy later marks it as hidden (with Bob's KIA hack)
+				// the player will have some indication that this clue is already on the mainframe.
+				// Hence manually hiding it would be pointless.
+				// This, however, cannot cover the case that someone else (eg. Steele) uploaded clues
+				// to the Mainframe, which McCoy had not yet tried to download.
+				// So, eg. if Steele uploaded clueA, and McCoy also somehow acquired clueA (without synching with Mainframe)
+				// then McCoy's KIA won't "know" that the Mainframe also has this clue, until he interacts / synchs with Mainframe
+				_vm->_playerActor->_clues->setSharedWithMainframe(clueId, true);
+			}
 			otherActor->acquireClue(clueId, false, fromActorId);
 			newCluesAcquired = true;
+		} else if (_vm->_cutContent
+		           && hasClue(clueId)
+		           && otherActor->hasClue(clueId)
+		           && _vm->_crimesDatabase->getAssetType(clueId) != kClueTypeIntangible
+		           && ((_id == BladeRunnerEngine::kActorVoiceOver && actorId == kActorMcCoy)
+		               || (_id == kActorMcCoy && actorId == BladeRunnerEngine::kActorVoiceOver) )
+		) {
+			// In Restored Content also mark clues that were not exchanged, because both parties already have them
+			_vm->_playerActor->_clues->setSharedWithMainframe(clueId, true);
 		}
 	}
 	return newCluesAcquired;

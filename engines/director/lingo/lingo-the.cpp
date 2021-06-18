@@ -969,6 +969,7 @@ void Lingo::setTheEntity(int entity, Datum &id, int field, Datum &d) {
 		_vm->setVersion(d.asInt());
 		break;
 	case kTheSelEnd:
+		g_director->getCurrentMovie()->_selEnd = d.asInt();
 		if (movie->_currentEditableTextChannel != 0) {
 			Channel *channel = score->getChannelById(movie->_currentEditableTextChannel);
 
@@ -977,6 +978,7 @@ void Lingo::setTheEntity(int entity, Datum &id, int field, Datum &d) {
 		}
 		break;
 	case kTheSelStart:
+		g_director->getCurrentMovie()->_selStart = d.asInt();
 		if (movie->_currentEditableTextChannel != 0) {
 			Channel *channel = score->getChannelById(movie->_currentEditableTextChannel);
 
@@ -1278,6 +1280,20 @@ void Lingo::setTheSprite(Datum &id1, int field, Datum &d) {
 	case kTheCastNum:
 		{
 			int castId = d.asCastId();
+			CastMember *castMember = g_director->getCurrentMovie()->getCastMember(castId);
+
+			if (castMember && castMember->_type == kCastDigitalVideo) {
+				Common::String path = castMember->getCast()->getVideoPath(castId);
+				if (!path.empty()) {
+					((DigitalVideoCastMember *)castMember)->loadVideo(pathMakeRelative(path));
+					((DigitalVideoCastMember *)castMember)->startVideo(channel);
+					// b_updateStage needs to have _videoPlayback set to render video
+					// in the regular case Score::renderSprites sets it.
+					// However Score::renderSprites is not in the current code path.
+					g_director->getCurrentMovie()->_videoPlayback = true;
+				}
+			}
+
 			if (castId != sprite->_castId) {
 				g_director->getCurrentWindow()->addDirtyRect(channel->getBbox());
 				channel->setCast(castId);

@@ -284,6 +284,9 @@ ScummEngine::ScummEngine(OSystem *syst, const DetectorResult &dr)
 	_townsScreen = 0;
 	_scrollRequest = _scrollDeltaAdjust = 0;
 	_scrollDestOffset = _scrollTimer = 0;
+	_refreshNeedCatchUp = false;
+	memset(_refreshDuration, 0, sizeof(_refreshDuration));
+	_refreshArrayPos = 0;
 #ifdef USE_RGB_COLOR
 	_cjkFont = 0;
 #endif
@@ -614,8 +617,6 @@ ScummEngine::ScummEngine(OSystem *syst, const DetectorResult &dr)
 
 
 ScummEngine::~ScummEngine() {
-	DebugMan.clearAllDebugChannels();
-
 	delete _musicEngine;
 
 	_mixer->stopAll();
@@ -2264,10 +2265,9 @@ Common::Error ScummEngine::go() {
 		// before the main loop continues. We try to imitate that behaviour here to avoid glitches, but without making it
 		// overly complicated...
 		if (_scrollDeltaAdjust) {
-			int adj = MIN<int>(_scrollDeltaAdjust * 4 / 3 - _scrollDeltaAdjust, delta * 4 / 3 - delta);
-			delta += adj;
+			delta = MAX<int>(0, delta - _scrollDeltaAdjust) + (MIN<int>(_scrollDeltaAdjust, delta) << 2) / 3;
+			_scrollDeltaAdjust = 0;
 		}
-		_scrollDeltaAdjust = 0;
 #endif
 		if (delta < 1)	// Ensure we don't get into an endless loop
 			delta = 1;  // by not decreasing sleepers.
@@ -2327,10 +2327,21 @@ void ScummEngine::waitForTimer(int msec_delay) {
 		_sound->updateCD(); // Loop CD Audio if needed
 		parseEvents();
 
+#ifndef DISABLE_TOWNS_DUAL_LAYER_MODE
+		uint32 screenUpdateTimerStart = _system->getMillis();
 		towns_updateGfx();
+#endif
 		_system->updateScreen();
+		uint32 cur = _system->getMillis();
 
-		if (_system->getMillis() >= start_time + msec_delay)
+#ifndef DISABLE_TOWNS_DUAL_LAYER_MODE
+		// These measurements are used to determine whether the FM-Towns smooth scrolling is likely to fall behind and need to catch
+		// up (becoming more sloppy than smooth). Calls to _system->updateScreen() can require way longer than a 60Hz tick, depending
+		// on the hardware and the filter setting. In fact, these calls can take way over 100ms for some unfortunate configs.
+		_refreshDuration[_refreshArrayPos] = (int)(cur - screenUpdateTimerStart);
+		_refreshArrayPos = (_refreshArrayPos + 1) % ARRAYSIZE(_refreshDuration);
+#endif
+		if (cur >= start_time + msec_delay)
 			break;
 		_system->delayMillis(10);
 	}
@@ -2373,7 +2384,7 @@ void ScummEngine::scummLoop(int delta) {
 		oldEgo = VAR(VAR_EGO);
 
 	// In V1-V3 games, CHARSET_1 is called much earlier than in newer games.
-	// See also bug #770042 for a case were this makes a difference.
+	// See also bug #987 for a case were this makes a difference.
 	if (_game.version <= 3)
 		CHARSET_1();
 

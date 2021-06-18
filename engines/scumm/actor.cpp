@@ -485,6 +485,11 @@ int Actor::calcMovementFactor(const Common::Point& next) {
 	diffY = next.y - _pos.y;
 	deltaYFactor = _speedy << 16;
 
+	// These two lines fix bug #1052 (INDY3: Hitler facing wrong directions in the Berlin scene).
+	// I can't see anything like this in the original SCUMM1/2 code, so I limit this to SCUMM3.
+	if (_vm->_game.version == 3 && (int)_speedx > ABS(diffX) && (int)_speedy > ABS(diffY))
+		return 0;
+
 	if (diffY < 0)
 		deltaYFactor = -deltaYFactor;
 
@@ -515,8 +520,9 @@ int Actor::calcMovementFactor(const Common::Point& next) {
 	_walkdata.xfrac = 0;
 	_walkdata.yfrac = 0;
 
-	if (_vm->_game.version <= 2)
-		_targetFacing = getAngleFromPos(V12_X_MULTIPLIER*deltaXFactor, V12_Y_MULTIPLIER*deltaYFactor, false);
+	if (_vm->_game.version <= 3)
+		// The x/y distance ratio which determines whether to face up/down instead of left/right is different for SCUMM1/2 and SCUMM3.
+		_targetFacing = oldDirToNewDir(((ABS(diffY) * (_vm->_game.version == 3 ? 3 : 1)) > ABS(diffX)) ? 3 - (diffY >= 0 ? 1 : 0) : (diffX >= 0 ? 1 : 0));
 	else
 		_targetFacing = getAngleFromPos(deltaXFactor, deltaYFactor, (_vm->_game.id == GID_DIG || _vm->_game.id == GID_CMI));
 
@@ -536,6 +542,9 @@ int Actor::actorWalkStep() {
 			startWalkAnim(1, nextFacing);
 		}
 		_moving |= MF_IN_LEG;
+		// The next two lines fix bug #12278 for ZAK FM-TOWNS. Limited to SCUMM3.
+		if (_vm->_game.version == 3)
+			return 1;
 	}
 
 	if (_walkbox != _walkdata.curbox && _vm->checkXYInBoxBounds(_walkdata.curbox, _pos.x, _pos.y)) {
@@ -1118,7 +1127,7 @@ void Actor_v2::walkActor() {
 		if (_facing != new_dir) {
 			setDirection(new_dir);
 		} else {
-			_moving = 0;
+			_moving &= ~MF_TURN;
 		}
 		return;
 	}
@@ -1184,10 +1193,19 @@ void Actor_v3::walkActor() {
 
 		if (_moving & MF_TURN) {
 			new_dir = updateActorDirection(false);
-			if (_facing != new_dir)
+			if (_facing != new_dir) {
 				setDirection(new_dir);
-			else
+			} else {
+				// WORKAROUND for bug #4594 ("SCUMM: Zak McKracken - Zak keeps walk animation without moving")
+				// This bug also happens with the original SCUMM3 (ZAK FM-TOWNS) interpreter (unlike SCUMM1/2
+				// where the actors are apparently supposed to continue walking after being turned). We have
+				// to stop the walking animation here...
+				// This also fixes bug #4601 ("SCUMM: Zak McKracken (FM-Towns) - shopkeeper keeps walking"),
+				// although that one does not happen with the original interpreter.
+				if (_vm->_game.id == GID_ZAK && _moving == MF_TURN)
+					startAnimActor(_standFrame);
 				_moving = 0;
+			}
 			return;
 		}
 
@@ -1376,21 +1394,26 @@ int Actor::updateActorDirection(bool is_walking) {
 	dir &= 1023;
 
 	if (shouldInterpolate) {
-		int to = toSimpleDir(dirType, dir);
-		int num = dirType ? 8 : 4;
+		if (_vm->_game.version <= 3) {
+			static const uint8 tbl[] = { 0, 2, 2, 3, 2, 1, 2, 3, 0, 1, 2, 1, 0, 1, 0, 3 };
+			dir = oldDirToNewDir(tbl[newDirToOldDir(dir) | (newDirToOldDir(_facing) << 2)]);
+		} else {
+			int to = toSimpleDir(dirType, dir);
+			int num = dirType ? 8 : 4;
 
-		// Turn left or right, depending on which is shorter.
-		int diff = to - from;
-		if (ABS(diff) > (num >> 1))
-			diff = -diff;
+			// Turn left or right, depending on which is shorter.
+			int diff = to - from;
+			if (ABS(diff) > (num >> 1))
+				diff = -diff;
 
-		if (diff > 0) {
-			to = from + 1;
-		} else if (diff < 0){
-			to = from - 1;
+			if (diff > 0) {
+				to = from + 1;
+			} else if (diff < 0) {
+				to = from - 1;
+			}
+
+			dir = fromSimpleDir(dirType, (to + num) % num);
 		}
-
-		dir = fromSimpleDir(dirType, (to + num) % num);
 	}
 
 	return dir;
@@ -1400,11 +1423,6 @@ void Actor::setDirection(int direction) {
 	uint aMask;
 	int i;
 	uint16 vald;
-
-	// HACK to fix bug #774783
-	// If Hitler's direction is being set to anything other than 90, set it to 90
-	if ((_vm->_game.id == GID_INDY3) && _vm->_roomResource == 46 && _number == 9 && direction != 90)
-		direction = 90;
 
 	// Do nothing if actor is already facing in the given direction
 	if (_facing == direction)
@@ -1475,11 +1493,12 @@ void Actor::turnToDirection(int newdir) {
 	if (_vm->_game.version <= 6) {
 		_targetFacing = newdir;
 
-		if (_vm->_game.version == 0) {
+		if (_vm->_game.version == 0)
 			setDirection(newdir);
-			return;
-		}
-		_moving = MF_TURN;
+		else if (_vm->_game.version <= 2)
+			_moving |= MF_TURN;
+		else
+			_moving = MF_TURN;
 
 	} else {
 		_moving &= ~MF_TURN;
@@ -2061,7 +2080,7 @@ void ScummEngine::processActors() {
 	// 'optimization' wouldn't yield a useful gain anyway.
 	//
 	// In particular, changing this loop caused a number of bugs in the
-	// past, including bugs #758167, #775097, and #1864.
+	// past, including bugs #912, #1055, and #1864.
 	//
 	// Note that Sam & Max uses a stable sorting method. Older games don't
 	// and, according to cyx, neither do newer ones. At least not FT and
@@ -2442,7 +2461,7 @@ void Actor::startAnimActor(int f) {
 			_needRedraw = true;
 			_cost.animCounter = 0;
 			// V1 - V2 games don't seem to need a _cost.reset() at this point.
-			// Causes Zak to lose his body in several scenes, see bug #771508
+			// Causes Zak to lose his body in several scenes, see bug #1032
 			if (_vm->_game.version >= 3 && f == _initFrame) {
 				_cost.reset();
 				if (_vm->_game.heversion != 0) {
@@ -2774,8 +2793,11 @@ void ScummEngine_v7::actorTalk(const byte *msg) {
 	playSpeech((byte *)_lastStringTag);
 
 	if (_game.id == GID_DIG || _game.id == GID_CMI) {
-		if (VAR(VAR_HAVE_MSG))
+		if (VAR(VAR_HAVE_MSG)) {
+			if (_game.id == GID_DIG && _roomResource == 58 && msg[0] == ' ' && !msg[1])
+				return;
 			stopTalk();
+		}
 	} else {
 		if (!_keepText)
 			stopTalk();
@@ -2822,7 +2844,7 @@ void ScummEngine::actorTalk(const byte *msg) {
 	// bug (#11480). It is not okay to skip the stopTalk() calls here.
 	// Instead, I have added two checks from LOOM DOS EGA disasm (one
 	// below and one in CHARSET_1()).
-	// WORKAROUND for bugs #770039 and #770049
+	// WORKAROUND for bugs #985 and #990
 	/*if (_game.id == GID_LOOM) {
 		if (!*_charsetBuffer)
 			return;
@@ -2836,7 +2858,7 @@ void ScummEngine::actorTalk(const byte *msg) {
 	} else {
 		int oldact;
 
-		// WORKAROUND bug #770724
+		// WORKAROUND bug #1025
 		if (_game.id == GID_LOOM && _roomResource == 23 &&
 			vm.slot[_currentScript].number == 232 && _actorToPrintStrFor == 0) {
 			_actorToPrintStrFor = 2;	// Could be anything from 2 to 5. Maybe compare to original?

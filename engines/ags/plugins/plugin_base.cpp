@@ -22,10 +22,13 @@
 
 #include "ags/lib/allegro.h"
 #include "ags/plugins/plugin_base.h"
+#include "ags/plugins/ags_agi/ags_agi.h"
 #include "ags/plugins/ags_blend/ags_blend.h"
+#include "ags/plugins/ags_clipboard/ags_clipboard.h"
 #include "ags/plugins/ags_controller/ags_controller.h"
 #include "ags/plugins/ags_creditz/ags_creditz1.h"
 #include "ags/plugins/ags_creditz/ags_creditz2.h"
+#include "ags/plugins/ags_fire/ags_fire.h"
 #include "ags/plugins/ags_flashlight/ags_flashlight.h"
 #include "ags/plugins/ags_galaxy_steam/ags_wadjeteye_steam.h"
 #include "ags/plugins/ags_galaxy_steam/ags_galaxy_steam.h"
@@ -34,6 +37,7 @@
 #include "ags/plugins/ags_pal_render/ags_pal_render.h"
 #include "ags/plugins/ags_shell/ags_shell.h"
 #include "ags/plugins/ags_snow_rain/ags_snow_rain.h"
+#include "ags/plugins/ags_sock/ags_sock.h"
 #include "ags/plugins/ags_sprite_font/ags_sprite_font.h"
 #include "ags/plugins/ags_sprite_font/ags_sprite_font_clifftop.h"
 #include "ags/plugins/ags_tcp_ip/ags_tcp_ip.h"
@@ -61,8 +65,14 @@ void *pluginOpen(const char *filename) {
 	if (fname.equalsIgnoreCase("ags_tcp_ip"))
 		return new AGSTcpIp::AGSTcpIp();
 
+	if (fname.equalsIgnoreCase("AGS_AGI"))
+		return new AGSAgi::AGSAgi();
+
 	if (fname.equalsIgnoreCase("AGSBlend"))
 		return new AGSBlend::AGSBlend();
+
+	if (fname.equalsIgnoreCase("AGSClipboard"))
+		return new AGSClipboard::AGSClipboard();
 
 	if (fname.equalsIgnoreCase("AGSController"))
 		return new AGSController::AGSController();
@@ -72,6 +82,9 @@ void *pluginOpen(const char *filename) {
 
 	if (fname.equalsIgnoreCase("agsCreditz2"))
 		return new AGSCreditz::AGSCreditz2();
+
+	if (fname.equalsIgnoreCase("AGS_Fire"))
+		return new AGSFire::AGSFire();
 
 	if (fname.equalsIgnoreCase("AGSFlashlight"))
 		return new AGSFlashlight::AGSFlashlight();
@@ -88,6 +101,9 @@ void *pluginOpen(const char *filename) {
 	if (fname.equalsIgnoreCase("AGSSnowRain") || fname.equalsIgnoreCase("ags_snowrain"))
 		return new AGSSnowRain::AGSSnowRain();
 
+	if (fname.equalsIgnoreCase("AGSSock"))
+		return new AGSSock::AGSSock();
+
 	if ((fname.equalsIgnoreCase("AGSSpriteFont") && version == ::AGS::kClifftopGames))
 		return new AGSSpriteFont::AGSSpriteFontClifftopGames();
 
@@ -95,7 +111,7 @@ void *pluginOpen(const char *filename) {
 		return new AGSSpriteFont::AGSSpriteFont();
 
 	if (fname.equalsIgnoreCase("agsgalaxy") || fname.equalsIgnoreCase("agsgalaxy-unified") ||
-			fname.equalsIgnoreCase("agsgalaxy-disjoint"))
+	        fname.equalsIgnoreCase("agsgalaxy-disjoint"))
 		return new AGSGalaxySteam::AGSGalaxy();
 
 	if (fname.equalsIgnoreCase("ags_Nickenstien_GFX"))
@@ -105,7 +121,7 @@ void *pluginOpen(const char *filename) {
 		return new AGSGalaxySteam::AGSWadjetEyeSteam();
 
 	if (fname.equalsIgnoreCase("agsteam") || fname.equalsIgnoreCase("agsteam-unified") ||
-			fname.equalsIgnoreCase("agsteam-disjoint"))
+	        fname.equalsIgnoreCase("agsteam-disjoint"))
 		return new AGSGalaxySteam::AGSSteam();
 
 	if (fname.equalsIgnoreCase("AGSWadjetUtil"))

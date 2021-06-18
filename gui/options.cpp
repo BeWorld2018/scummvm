@@ -1189,31 +1189,29 @@ void OptionsDialog::addKeyMapperControls(GuiObject *boss, const Common::String &
 	_keymapperWidget = new Common::RemapWidget(boss, prefix + "Container", keymaps);
 }
 
-void OptionsDialog::addAchievementsControls(GuiObject *boss, const Common::String &prefix, const Common::AchievementsInfo &info) {
-	Common::String achDomainId = ConfMan.get("achievements", _domain);
-	AchMan.setActiveDomain(info.platform, info.appId);
-
+void OptionsDialog::addAchievementsControls(GuiObject *boss, const Common::String &prefix) {
 	GUI::ScrollContainerWidget *scrollContainer;
 	scrollContainer = new GUI::ScrollContainerWidget(boss, prefix + "Container", "");
 	scrollContainer->setBackgroundType(GUI::ThemeEngine::kWidgetBackgroundNo);
 
 	uint16 nAchieved = 0;
 	uint16 nHidden = 0;
-	uint16 nMax = info.descriptions.size();
+	uint16 nMax = AchMan.getAchievementCount();
 
 	uint16 lineHeight = g_gui.xmlEval()->getVar("Globals.Line.Height");
 	uint16 yStep = lineHeight;
-	uint16 ySmallStep = yStep/3;
-	uint16 yPos = lineHeight + yStep*3;
+	uint16 ySmallStep = yStep / 3;
+	uint16 yPos = lineHeight + yStep * 3;
 	uint16 progressBarWidth = 240;
 	uint16 width = g_system->getOverlayWidth() <= 320 ? 240 : 410;
-	uint16 descrDelta = g_system->getOverlayWidth() <= 320 ? 25 : 30;
+	uint16 commentDelta = g_system->getOverlayWidth() <= 320 ? 25 : 30;
 
 	for (int16 viewAchieved = 1; viewAchieved >= 0; viewAchieved--) {
 		// run this twice, first view all achieved, then view all non-hidden & non-achieved
 
 		for (uint16 idx = 0; idx < nMax ; idx++) {
-			int16 isAchieved = AchMan.isAchieved(info.descriptions[idx].id) ? 1 : 0;
+			const Common::AchievementDescription *descr = AchMan.getAchievementDescription(idx);
+			int16 isAchieved = AchMan.isAchieved(descr->id) ? 1 : 0;
 
 			if (isAchieved != viewAchieved) {
 				continue;
@@ -1223,19 +1221,19 @@ void OptionsDialog::addAchievementsControls(GuiObject *boss, const Common::Strin
 				nAchieved++;
 			}
 
-			if (!isAchieved && info.descriptions[idx].isHidden) {
+			if (!isAchieved && descr->isHidden) {
 				nHidden++;
 				continue;
 			}
 
 			CheckboxWidget *checkBox;
-			checkBox = new CheckboxWidget(scrollContainer, lineHeight, yPos, width, yStep, Common::U32String(info.descriptions[idx].title));
+			checkBox = new CheckboxWidget(scrollContainer, lineHeight, yPos, width, yStep, Common::U32String(descr->title));
 			checkBox->setEnabled(false);
 			checkBox->setState(isAchieved);
 			yPos += yStep;
 
-	        if (info.descriptions[idx].comment && strlen(info.descriptions[idx].comment) > 0) {
-				new StaticTextWidget(scrollContainer, lineHeight + descrDelta, yPos, width - descrDelta, yStep, Common::U32String(info.descriptions[idx].comment), Graphics::kTextAlignStart, Common::U32String(), ThemeEngine::kFontStyleNormal);
+	        if (!descr->comment.empty()) {
+				new StaticTextWidget(scrollContainer, lineHeight + commentDelta, yPos, width - commentDelta, yStep, Common::U32String(descr->comment), Graphics::kTextAlignStart, Common::U32String(), ThemeEngine::kFontStyleNormal);
 				yPos += yStep;
 			}
 
@@ -1258,6 +1256,33 @@ void OptionsDialog::addAchievementsControls(GuiObject *boss, const Common::Strin
 		progressBar->setValue(nAchieved);
 		progressBar->setMaxValue(nMax);
 		progressBar->setEnabled(false);
+	}
+}
+
+void OptionsDialog::addStatisticsControls(GuiObject *boss, const Common::String &prefix) {
+	GUI::ScrollContainerWidget *scrollContainer;
+	scrollContainer = new GUI::ScrollContainerWidget(boss, prefix + "Container", "");
+	scrollContainer->setBackgroundType(GUI::ThemeEngine::kWidgetBackgroundNo);
+
+	uint16 nMax = AchMan.getStatCount();
+
+	uint16 lineHeight = g_gui.xmlEval()->getVar("Globals.Line.Height");
+	uint16 yStep = lineHeight;
+	uint16 ySmallStep = yStep / 3;
+	uint16 yPos = lineHeight;
+	uint16 width = g_system->getOverlayWidth() <= 320 ? 240 : 410;
+
+	for (uint16 idx = 0; idx < nMax ; idx++) {
+		const Common::StatDescription *descr = AchMan.getStatDescription(idx);
+
+		const Common::String &key = descr->comment.empty() ? descr->id : descr->comment;
+		Common::String value = AchMan.getStatRaw(descr->id);
+
+		Common::U32String str = Common::U32String::format("%s: %s", key.c_str(), value.c_str());
+		new StaticTextWidget(scrollContainer, lineHeight, yPos, width, yStep, str, Graphics::kTextAlignStart);
+
+		yPos += yStep;
+		yPos += ySmallStep;
 	}
 }
 

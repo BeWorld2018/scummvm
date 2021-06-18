@@ -55,6 +55,7 @@ class VideoDecoder;
 namespace Director {
 
 class AudioDecoder;
+struct CastMemberInfo;
 class Channel;
 struct Resource;
 class Stxt;
@@ -66,6 +67,7 @@ public:
 
 	Cast *getCast() { return _cast; }
 	uint16 getID() { return _castId; }
+	CastMemberInfo *getInfo();
 
 	virtual bool isEditable() { return false; }
 	virtual void setEditable(bool editable) {}
@@ -93,7 +95,6 @@ public:
 
 	bool _modified;
 	bool _hilite;
-	bool _autoHilite;
 	int _purgePriority;
 	uint32 _size;
 	uint8 _flags1;
@@ -142,6 +143,7 @@ public:
 
 	bool loadVideo(Common::String path);
 	void startVideo(Channel *channel);
+	void stopVideo(Channel *channel);
 
 	uint getMovieCurrentTime();
 	uint getMovieTotalTime();
@@ -253,6 +255,8 @@ public:
 	Common::String getText();
 
 private:
+	Common::Rect getTextOnlyDimensions(const Common::Rect &targetDims);
+
 	uint32 _bgcolor;
 	uint32 _fgcolor;
 };
@@ -280,6 +284,7 @@ struct EditInfo {
 };
 
 struct CastMemberInfo {
+	bool autoHilite;
 	uint32 scriptId;
 	Common::String script;
 	Common::String name;
@@ -291,6 +296,8 @@ struct CastMemberInfo {
 	EditInfo textEditInfo;
 	Common::String modifiedBy;
 	Common::String comments;
+
+	CastMemberInfo() : autoHilite(false), scriptId(0) {}
 };
 
 struct Label {

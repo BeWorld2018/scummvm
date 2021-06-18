@@ -24,7 +24,7 @@
 #define AGS_PLUGINS_PLUGIN_BASE_H
 
 #include "ags/shared/util/string.h"
-#include "ags/plugins/agsplugin.h"
+#include "ags/plugins/ags_plugin.h"
 #include "common/hashmap.h"
 #include "common/hash-str.h"
 
@@ -34,6 +34,18 @@ namespace Plugins {
 #define DLL_METHOD(NAME) _methods[#NAME] = (void *)&NAME
 #define SCRIPT_METHOD(NAME) registerFunction(engine, #NAME, &NAME)
 #define SCRIPT_METHOD_EXT(NAME, PROC) registerFunction(engine, #NAME, &(PROC))
+
+inline float PARAM_TO_FLOAT(int32 xi) {
+	float x;
+	memcpy(&x, &xi, sizeof(float));
+	return x;
+}
+
+inline int32 PARAM_FROM_FLOAT(float x) {
+	int32 xi;
+	memcpy(&xi, &x, sizeof(float));
+	return xi;
+}
 
 #define PARAMS1(T1, N1) \
 	T1 N1 = (T1)params[0]
@@ -101,31 +113,31 @@ typedef void (*PluginMethod)(ScriptMethodParams &params);
  */
 class PluginBase {
 protected:
-	Common::HashMap<Common::String, void *, Common::IgnoreCase_Hash, Common::IgnoreCase_EqualTo> _methods;
+Common::HashMap<Common::String, void *, Common::IgnoreCase_Hash, Common::IgnoreCase_EqualTo> _methods;
 
-	static int    AGS_PluginV2() {
-		return 1;
-	}
-	static int    AGS_EditorStartup(IAGSEditor *);
-	static void   AGS_EditorShutdown();
-	static void   AGS_EditorProperties(HWND);
-	static int    AGS_EditorSaveGame(char *, int);
-	static void   AGS_EditorLoadGame(char *, int);
-	static void   AGS_EngineStartup(IAGSEngine *);
-	static void   AGS_EngineShutdown();
-	static int64 AGS_EngineOnEvent(int, NumberPtr);
-	static int    AGS_EngineDebugHook(const char *, int, int);
-	static void   AGS_EngineInitGfx(const char *driverID, void *data);
+static int    AGS_PluginV2() {
+	return 1;
+}
+static int    AGS_EditorStartup(IAGSEditor *);
+static void   AGS_EditorShutdown();
+static void   AGS_EditorProperties(HWND);
+static int    AGS_EditorSaveGame(char *, int);
+static void   AGS_EditorLoadGame(char *, int);
+static void   AGS_EngineStartup(IAGSEngine *);
+static void   AGS_EngineShutdown();
+static int64 AGS_EngineOnEvent(int, NumberPtr);
+static int    AGS_EngineDebugHook(const char *, int, int);
+static void   AGS_EngineInitGfx(const char *driverID, void *data);
 
-	static inline void registerFunction(IAGSEngine *engine, const char *name, PluginMethod fn) {
-		engine->RegisterScriptFunction(name, (void *)fn);
-	}
+static inline void registerFunction(IAGSEngine *engine, const char *name, PluginMethod fn) {
+	engine->RegisterScriptFunction(name, (void *)fn);
+}
 public:
-	PluginBase();
+PluginBase();
 
-	void *operator[](const Common::String &methodName) const {
-		return _methods[methodName];
-	}
+void *operator[](const Common::String &methodName) const {
+	return _methods[methodName];
+}
 };
 
 extern void *pluginOpen(const char *filename);
