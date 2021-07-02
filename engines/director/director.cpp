@@ -86,6 +86,8 @@ DirectorEngine::DirectorEngine(OSystem *syst, const DirectorGameDescription *gam
 	// Meet Mediaband could have up to 5 levels of directories
 	SearchMan.addDirectory(_gameDataDir.getPath(), _gameDataDir, 0, 5);
 
+	SearchMan.addSubDirectoryMatching(_gameDataDir, "win_data", 0, 2);
+
 	for (uint i = 0; Director::directoryGlobs[i]; i++) {
 		Common::String directoryGlob = directoryGlobs[i];
 		SearchMan.addSubDirectoryMatching(_gameDataDir, directoryGlob);
@@ -96,6 +98,8 @@ DirectorEngine::DirectorEngine(OSystem *syst, const DirectorGameDescription *gam
 	_playbackPaused = false;
 	_skipFrameAdvance = false;
 	_centerStage = true;
+
+	_surface = nullptr;
 }
 
 DirectorEngine::~DirectorEngine() {
@@ -103,6 +107,7 @@ DirectorEngine::~DirectorEngine() {
 	delete _soundManager;
 	delete _lingo;
 	delete _wm;
+	delete _surface;
 
 	for (Common::HashMap<Common::String, Archive *, Common::IgnoreCase_Hash, Common::IgnoreCase_EqualTo>::iterator it = _openResFiles.begin(); it != _openResFiles.end(); ++it) {
 		delete it->_value;
@@ -161,7 +166,8 @@ Common::Error DirectorEngine::run() {
 	if (!debugChannelSet(-1, kDebugDesktop))
 		_stage->disableBorder();
 
-	_wm->setScreen(1, 1);
+	_surface = new Graphics::ManagedSurface(1, 1);
+	_wm->setScreen(_surface);
 	_wm->addWindowInitialized(_stage);
 	_wm->setActiveWindow(_stage->getId());
 	setPalette(-1);

@@ -76,6 +76,11 @@ public:
 	virtual int getDefaultStretchMode() const override final;
 	virtual bool setStretchMode(int mode) override final;
 	virtual int getStretchMode() const override final;
+	virtual uint getDefaultScaler() const override final;
+	virtual uint getDefaultScaleFactor() const override final;
+	using BaseBackend::setScaler;
+	virtual bool setScaler(uint mode, int factor) override final;
+	virtual uint getScaler() const override final;
 #ifdef USE_RGB_COLOR
 	virtual Graphics::PixelFormat getScreenFormat() const override final;
 	virtual Common::List<Graphics::PixelFormat> getSupportedFormats() const override final;
@@ -104,7 +109,7 @@ public:
 	virtual bool isOverlayVisible() const override final;
 	virtual Graphics::PixelFormat getOverlayFormat() const override final;
 	virtual void clearOverlay() override final;
-	virtual void grabOverlay(void *buf, int pitch) override final;
+	virtual void grabOverlay(Graphics::Surface &surface) override final;
 	virtual void copyRectToOverlay(const void *buf, int pitch, int x, int y, int w, int h) override final;
 	virtual int16 getOverlayHeight() override final;
 	virtual int16 getOverlayWidth() override final;

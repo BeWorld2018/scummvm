@@ -31,7 +31,6 @@
 #include "common/ustr.h"
 #include "audio/mixer_intern.h"
 #include "backends/fs/posix/posix-fs-factory.h"
-#include "graphics/colormasks.h"
 #include "graphics/palette.h"
 
 #include <AudioToolbox/AudioQueue.h>
@@ -163,11 +162,11 @@ public:
 	virtual void hideOverlay() override;
 	virtual bool isOverlayVisible() const override { return _videoContext->overlayVisible; }
 	virtual void clearOverlay() override;
-	virtual void grabOverlay(void *buf, int pitch) override;
+	virtual void grabOverlay(Graphics::Surface &surface) override;
 	virtual void copyRectToOverlay(const void *buf, int pitch, int x, int y, int w, int h) override;
 	virtual int16 getOverlayHeight() override;
 	virtual int16 getOverlayWidth() override;
-	virtual Graphics::PixelFormat getOverlayFormat() const override { return Graphics::createPixelFormat<5551>(); }
+	virtual Graphics::PixelFormat getOverlayFormat() const override;
 
 	virtual bool showMouse(bool visible) override;
 

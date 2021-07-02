@@ -49,9 +49,8 @@ namespace AGS {
  * @brief Engine to run Adventure Game Studio games.
  */
 
-/* Synced up to upstream:
- * "Common: removed unused function"
- * fc6006ca3375ed19f23c8ef1c0b060af7be273d9
+/* Synced up to upstream: AGS 3.5.1.8
+ * 811f6c126fcff1cc5a0db8b6e0a1b9fca2550235
  */
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 200
@@ -117,9 +116,14 @@ public:
 	}
 
 	/**
-	 * Setse up the graphics mode
+	 * Returns a pixel format for the given color depth.
 	 */
-	void setGraphicsMode(size_t w, size_t h);
+	bool getPixelFormat(int depth, Graphics::PixelFormat &format) const;
+
+	/**
+	 * Sets up the graphics mode
+	 */
+	void setGraphicsMode(size_t w, size_t h, int depth);
 
 	bool hasFeature(EngineFeature f) const override {
 		return

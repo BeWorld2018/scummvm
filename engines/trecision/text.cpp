@@ -111,7 +111,7 @@ void TextManager::formattingOneString() {
 	_subStringAgain = false;
 }
 
-void TextManager::characterTalk(const char *s) {
+void TextManager::characterTalk(Common::String s) {
 	_vm->_flagSomeoneSpeaks = true;
 	_vm->_flagCharacterSpeak = true;
 	_vm->_flagSkipTalk = false;
@@ -442,11 +442,11 @@ void TextManager::clearText() {
 }
 
 void TextManager::drawTexts() {
-	for (Common::List<StackText>::iterator i = _textStack.begin(); i != _textStack.end(); ++i) {
-		if (i->_clear)
+	for (Common::List<StackText>::iterator it = _textStack.begin(); it != _textStack.end(); ++it) {
+		if (it->_clear)
 			clearText();
 		else
-			drawText(&*i);
+			drawText(&*it);
 	}
 }
 

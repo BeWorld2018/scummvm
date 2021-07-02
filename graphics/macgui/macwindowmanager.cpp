@@ -188,6 +188,7 @@ MacWindowManager::MacWindowManager(uint32 mode, MacPatterns *patterns) {
 	_colorGreen2 = kColorGreen2;
 
 	_fullRefresh = true;
+	_inEditableArea = false;
 
 	if (mode & kWMMode32bpp)
 		_pixelformat = Graphics::PixelFormat(4, 8, 8, 8, 8, 24, 16, 8, 0);
@@ -266,11 +267,30 @@ void MacWindowManager::setScreen(int w, int h) {
 	drawDesktop();
 }
 
+void MacWindowManager::resizeScreen(int w, int h) {
+	if (!_screen)
+		error("MacWindowManager::resizeScreen(): Trying to creating surface on non-existing screen");
+	_screenDims = Common::Rect(w, h);
+	_screen->free();
+	_screen->create(w, h, _pixelformat);
+}
+
 void MacWindowManager::setMode(uint32 mode) {
 	_mode = mode;
 
 	if (mode & kWMModeForceBuiltinFonts)
 		_fontMan->forceBuiltinFonts();
+}
+
+void MacWindowManager::clearHandlingWidgets() {
+	// pass a LBUTTONUP event to those widgets should clear those state
+	Common::Event event;
+	event.type = Common::EVENT_LBUTTONUP;
+	event.mouse = _lastClickPos;
+	processEvent(event);
+
+	setActiveWidget(nullptr);
+	_hoveredWidget = nullptr;
 }
 
 void MacWindowManager::setActiveWidget(MacWidget *widget) {
@@ -388,6 +408,10 @@ void MacWindowManager::disableScreenCopy() {
 		delete _screenCopyPauseToken;
 		_screenCopyPauseToken = nullptr;
 	}
+
+	// add a check, we may not get the _screenCopy because we may not activate the menu
+	if (!_screenCopy)
+		return;
 
 	if (_screen)
 		*_screen = *_screenCopy; // restore screen
@@ -827,11 +851,16 @@ bool MacWindowManager::processEvent(Common::Event &event) {
 				 _activeWidget->getDimensions().contains(event.mouse.x, event.mouse.y))) {
 			if (_cursorType != kMacCursorBeam) {
 				_tempType = _cursorType;
+				_inEditableArea = true;
 				replaceCursor(kMacCursorBeam);
 			}
 		} else {
-			if (_cursorType == kMacCursorBeam)
+			// here, we use _inEditableArea is distinguish whether the current Beam cursor is set by director or ourself
+			// if we are not in the editable area but we are drawing the Beam cursor, then the cursor is set by director, thus we don't replace it
+			if (_cursorType == kMacCursorBeam && _inEditableArea) {
 				replaceCursor(_tempType, _cursor);
+				_inEditableArea = false;
+			}
 		}
 	}
 
@@ -1102,6 +1131,8 @@ void MacWindowManager::popCursor() {
 	} else {
 		CursorMan.popCursor();
 		CursorMan.popCursorPalette();
+		// since we may only have one cursor available when we using macCursor, so we restore the cursorType when we pop the cursor
+		_cursorType = kMacCursorArrow;
 	}
 }
 
@@ -1132,6 +1163,12 @@ void MacWindowManager::passPalette(const byte *pal, uint size) {
 
 	drawDesktop();
 	setFullRefresh(true);
+}
+
+uint MacWindowManager::findBestColor(uint32 color) {
+	byte r, g, b;
+	decomposeColor(color, r, g, b);
+	return findBestColor(r, g, b);
 }
 
 uint MacWindowManager::findBestColor(byte cr, byte cg, byte cb) {

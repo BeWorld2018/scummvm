@@ -72,8 +72,8 @@ Actor::Actor() : _strength(0), _dexterity(0), _intelligence(0),
 		_lastAnim(Animation::stand), _animFrame(0), _direction(dir_north),
 		_fallStart(0), _unkByte(0), _actorFlags(0), _combatTactic(0),
 		_homeX(0), _homeY(0), _homeZ(0), _currentActivityNo(0),
-		_lastActivityNo(0), _activeWeapon(0), _lastTimeWasHit(0),
-		_shieldType(0), _attackMoveStartTime(0), _attackMoveTimeout(0),
+		_lastActivityNo(0), _activeWeapon(0), _lastTickWasHit(0),
+		_attackMoveStartFrame(0), _attackMoveTimeout(0),
 		_attackMoveDodgeFactor(1), _attackAimFlag(false) {
 	_defaultActivity[0] = 0;
 	_defaultActivity[1] = 0;
@@ -510,7 +510,7 @@ uint16 Actor::doAnim(Animation::Sequence anim, Direction dir, unsigned int steps
 		switch(anim) {
 			case Animation::walk:
 			case Animation::retreat: // SmallWeapon
-				_attackMoveStartTime = frameno;
+				_attackMoveStartFrame = frameno;
 				_attackMoveTimeout = 120;
 				_attackMoveDodgeFactor = 3;
 				break;
@@ -526,19 +526,19 @@ uint16 Actor::doAnim(Animation::Sequence anim, Direction dir, unsigned int steps
 			//case Animation::startRunSmallWeapon:
 			//case Animation::startRunLargeWeapon:
 			case Animation::startRun:
-				_attackMoveStartTime = frameno;
+				_attackMoveStartFrame = frameno;
 				_attackMoveTimeout = 120;
 				_attackMoveDodgeFactor = 2;
 				break;
 			case Animation::slideLeft:
 			case Animation::slideRight:
-				_attackMoveStartTime = frameno;
+				_attackMoveStartFrame = frameno;
 				_attackMoveTimeout = 60;
 				_attackMoveDodgeFactor = 3;
 				break;
 			case Animation::startKneeling:
 			case Animation::stopKneeling:
-				_attackMoveStartTime = frameno;
+				_attackMoveStartFrame = frameno;
 				_attackMoveTimeout = 75;
 				_attackMoveDodgeFactor = 3;
 				break;
@@ -908,13 +908,16 @@ void Actor::receiveHitCru(uint16 other, Direction dir, int damage, uint16 damage
 
 	// Special case for Vargas, who has a shield.
 	if (GAME_IS_REMORSE && shape == 0x3ac && world->getVargasShield() > 0) {
+		uint16 currentanim = 0;
 		if (isBusy()) {
 			ActorAnimProcess *proc = dynamic_cast<ActorAnimProcess *>(Kernel::get_instance()->findProcess(_objId, ActorAnimProcess::ACTOR_ANIM_PROC_TYPE));
-			if (proc->getAction() == Animation::teleportIn || proc->getAction() == Animation::teleportOut || proc->getAction() == Animation::teleportInReplacement || proc->getAction() == Animation::teleportOutReplacement)
+			Animation::Sequence action = proc->getAction();
+			if (action == Animation::teleportIn || action == Animation::teleportOut || action == Animation::teleportInReplacement || action == Animation::teleportOutReplacement)
 				return;
+			currentanim = proc->getPid();
 		}
 
-		ProcId teleout = doAnim(Animation::teleportOutReplacement, dir_current);
+		ProcId teleout = doAnimAfter(Animation::teleportOutReplacement, dir_current, currentanim);
 		doAnimAfter(Animation::teleportInReplacement, dir_current, teleout);
 		int newval = MAX(0, static_cast<int>(world->getVargasShield()) - damage);
 		world->setVargasShield(static_cast<uint32>(newval));
@@ -936,7 +939,7 @@ void Actor::receiveHitCru(uint16 other, Direction dir, int damage, uint16 damage
 	if (isDead())
 		return;
 
-	_lastTimeWasHit = Kernel::get_instance()->getTickNum();
+	_lastTickWasHit = Kernel::get_instance()->getTickNum();
 
 	if (shape != 1 && this != getControlledActor()) {
 		Actor *controlled = getControlledActor();
@@ -1008,13 +1011,13 @@ void Actor::receiveHitCru(uint16 other, Direction dir, int damage, uint16 damage
 		}
 		if (damage_type == 0xf || damage_type == 7) {
 			if (shape == 1) {
-				kernel->killProcesses(_objId, 0x204, true);
+				kernel->killProcesses(_objId, PathfinderProcess::PATHFINDER_PROC_TYPE, true);
 				doAnim(static_cast<Animation::Sequence>(0x37), dir_current);
 			} else if (shape == 0x4e6 || shape == 0x338 || shape == 0x385 || shape == 899) {
 				if (!(getRandom() % 3)) {
 					// Randomly stun the NPC for these damage types.
 					// CHECK ME: is this time accurate?
-					Process *attack = kernel->findProcess(_objId, 0x259);
+					Process *attack = kernel->findProcess(_objId, AttackProcess::ATTACK_PROCESS_TYPE);
 					uint stun = ((getRandom() % 10) + 8) * 60;
 					if (attack && stun) {
 						Process *delay = new DelayProcess(stun);
@@ -1697,7 +1700,7 @@ CombatProcess *Actor::getCombatProcess() {
 }
 
 AttackProcess *Actor::getAttackProcess() {
-	Process *p = Kernel::get_instance()->findProcess(_objId, 0x259); // CONSTANT!
+	Process *p = Kernel::get_instance()->findProcess(_objId, AttackProcess::ATTACK_PROCESS_TYPE);
 	if (!p)
 		return nullptr;
 	AttackProcess *ap = dynamic_cast<AttackProcess *>(p);
@@ -1928,9 +1931,9 @@ void Actor::saveData(Common::WriteStream *ws) {
 		ws->writeUint16LE(_currentActivityNo);
 		ws->writeUint16LE(_lastActivityNo);
 		ws->writeUint16LE(_activeWeapon);
-		ws->writeSint32LE(_lastTimeWasHit);
-		ws->writeByte(_shieldType);
-		ws->writeUint32LE(_attackMoveStartTime);
+		ws->writeSint32LE(_lastTickWasHit);
+		ws->writeByte(0); // unused, keep for backward compatibility
+		ws->writeUint32LE(_attackMoveStartFrame);
 		ws->writeUint32LE(_attackMoveTimeout);
 		ws->writeUint16LE(_attackMoveDodgeFactor);
 		ws->writeByte(_attackAimFlag ? 1 : 0);
@@ -1965,9 +1968,9 @@ bool Actor::loadData(Common::ReadStream *rs, uint32 version) {
 		_currentActivityNo = rs->readUint16LE();
 		_lastActivityNo = rs->readUint16LE();
 		_activeWeapon = rs->readUint16LE();
-		_lastTimeWasHit = rs->readSint32LE();
-		_shieldType = rs->readByte();
-		_attackMoveStartTime = rs->readUint32LE();
+		_lastTickWasHit = rs->readSint32LE();
+		rs->readByte();  // unused, keep for backward compatibility
+		_attackMoveStartFrame = rs->readUint32LE();
 		_attackMoveTimeout = rs->readUint32LE();
 		_attackMoveDodgeFactor = rs->readUint16LE();
 		_attackAimFlag = rs->readByte() != 0;

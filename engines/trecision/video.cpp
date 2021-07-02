@@ -82,7 +82,7 @@ bool NightlongSmackerDecoder::forceSeekToFrame(uint frame) {
 
 	stopAudio();
 	SmackerVideoTrack *videoTrack = (SmackerVideoTrack *)getTrack(0);
-	uint32 start = _fileStream->pos();
+	uint32 startPos = _fileStream->pos();
 	uint32 offset = 0;
 	for (uint32 i = 0; i < seekFrame; i++) {
 		videoTrack->increaseCurFrame();
@@ -90,13 +90,13 @@ bool NightlongSmackerDecoder::forceSeekToFrame(uint frame) {
 		// the previous palette as their base. Therefore, we need to
 		// parse all palette entries up to the requested frame
 		if (_frameTypes[videoTrack->getCurFrame()] & 1) {
-			_fileStream->seek(start + offset, SEEK_SET);
+			_fileStream->seek(startPos + offset, SEEK_SET);
 			videoTrack->unpackPalette(_fileStream);
 		}
 		offset += _frameSizes[i] & ~3;
 	}
 
-	if (!_fileStream->seek(start + offset, SEEK_SET))
+	if (!_fileStream->seek(startPos + offset, SEEK_SET))
 		return false;
 
 	while (getCurFrame() < (int)frame) {
@@ -141,7 +141,7 @@ AnimManager::~AnimManager() {
 	}
 }
 
-void AnimManager::playMovie(const Common::String &filename, int startFrame, int endFrame) {
+void AnimManager::playMovie(const Common::String &filename, int startFrame, int endFrame, bool singleChoice) {
 	NightlongSmackerDecoder *smkDecoder = new NightlongSmackerDecoder;
 
 	if (!smkDecoder->loadFile(filename)) {
@@ -158,6 +158,11 @@ void AnimManager::playMovie(const Common::String &filename, int startFrame, int 
 	_vm->_drawText._text.clear();
 
 	smkDecoder->start();
+
+	// WORKAROUND: If the video has a single choice, and it starts from
+	// the beginning, ignore the calculated end frame and play all of it
+	if (singleChoice && startFrame < 10 && endFrame < (int)smkDecoder->getFrameCount() - 1)
+		endFrame = smkDecoder->getFrameCount() - 1;
 
 	setVideoRange(smkDecoder, startFrame, endFrame);
 
@@ -479,16 +484,16 @@ void AnimManager::drawSmkBackgroundFrame(int animation) {
 	const byte *palette = smkDecoder->getPalette();
 
 	if (smkDecoder->getCurFrame() == 0 && !_bgAnimRestarted) {
-		bool drawFrame = true;
+		bool drawFrameFlag = true;
 
 		for (int32 i = 0; i < MAXCHILD; i++) {
 			if ((_animTab[animation]._flag & (SMKANIM_OFF1 << i))) {
-				drawFrame = false;
+				drawFrameFlag = false;
 				break;
 			}
 		}
 
-		if (drawFrame)
+		if (drawFrameFlag)
 			_vm->_graphicsMgr->blitToScreenBuffer(frame, 0, TOP, palette, true);
 	} else {
 		while (lastRect) {
@@ -569,23 +574,23 @@ void AnimManager::swapCD(int cd) {
 }
 
 void AnimManager::syncGameStream(Common::Serializer &ser) {
-	for (int a = 0; a < MAXANIM; a++) {
-		SAnim *cur = &_animTab[a];
+	for (int i = 0; i < MAXANIM; i++) {
+		SAnim *cur = &_animTab[i];
 		ser.syncBytes((byte *)cur->_name, 14);
 		ser.syncAsUint16LE(cur->_flag);
-		for (uint8 i = 0; i < MAXCHILD; ++i) {
-			ser.syncAsUint16LE(cur->_lim[i].left);
-			ser.syncAsUint16LE(cur->_lim[i].top);
-			ser.syncAsUint16LE(cur->_lim[i].right);
-			ser.syncAsUint16LE(cur->_lim[i].bottom);
+		for (uint8 j = 0; j < MAXCHILD; ++j) {
+			ser.syncAsUint16LE(cur->_lim[j].left);
+			ser.syncAsUint16LE(cur->_lim[j].top);
+			ser.syncAsUint16LE(cur->_lim[j].right);
+			ser.syncAsUint16LE(cur->_lim[j].bottom);
 		}
 		ser.syncAsByte(cur->_nbox);
 		ser.skip(1, SAVE_VERSION_ORIGINAL_MIN, SAVE_VERSION_ORIGINAL_MAX);
-		for (uint8 i = 0; i < MAXATFRAME; ++i) {
-			ser.syncAsByte(cur->_atFrame[i]._type);
-			ser.syncAsByte(cur->_atFrame[i]._child);
-			ser.syncAsUint16LE(cur->_atFrame[i]._numFrame);
-			ser.syncAsUint16LE(cur->_atFrame[i]._index);
+		for (uint8 j = 0; j < MAXATFRAME; ++j) {
+			ser.syncAsByte(cur->_atFrame[j]._type);
+			ser.syncAsByte(cur->_atFrame[j]._child);
+			ser.syncAsUint16LE(cur->_atFrame[j]._numFrame);
+			ser.syncAsUint16LE(cur->_atFrame[j]._index);
 		}
 	}
 }

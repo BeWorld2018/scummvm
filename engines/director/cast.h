@@ -48,7 +48,7 @@ class TextCastMember;
 
 class Cast {
 public:
-	Cast(Movie *movie, bool shared = false);
+	Cast(Movie *movie, uint16 castLibID, bool shared = false);
 	~Cast();
 
 	void loadArchive();
@@ -80,13 +80,14 @@ public:
 
 private:
 	PaletteV4 loadPalette(Common::SeekableReadStreamEndian &stream);
-	void loadScriptText(Common::SeekableReadStreamEndian &stream);
+	void loadScriptText(Common::SeekableReadStreamEndian &stream, uint16 id);
 	void loadFontMap(Common::SeekableReadStreamEndian &stream);
 	Common::String getString(Common::String str);
 
 public:
 	Archive *_castArchive;
 	uint16 _version;
+	uint16 _castLibID;
 
 	Common::HashMap<uint16, Common::String> _fontMap;
 
@@ -100,7 +101,6 @@ public:
 	uint16 _stageColor;
 	int _defaultPalette;
 
-	uint16 _movieScriptCount;
 	LingoArchive *_lingoArchive;
 
 private:

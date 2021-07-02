@@ -43,6 +43,7 @@
 #include "ags/shared/util/path.h"
 #include "ags/shared/util/string_utils.h"
 #include "ags/engine/media/audio/audio_system.h"
+#include "common/config-manager.h"
 
 namespace AGS3 {
 
@@ -354,7 +355,9 @@ void apply_config(const ConfigTree &cfg) {
 		_GP(usetup).user_data_dir = INIreadstring(cfg, "misc", "user_data_dir");
 		_GP(usetup).shared_data_dir = INIreadstring(cfg, "misc", "shared_data_dir");
 
-		_GP(usetup).translation = INIreadstring(cfg, "language", "translation");
+		Common::String translation;
+		if (ConfMan.getActiveDomain()->tryGetVal("translation", translation) && !translation.empty())
+			_GP(usetup).translation = translation;
 
 		int cache_size_kb = INIreadint(cfg, "misc", "cachemax", DEFAULTCACHESIZE_KB);
 		if (cache_size_kb > 0)
@@ -424,42 +427,6 @@ void post_config() {
 
 void save_config_file() {
 	// ScummVM doesn't write out any configuration changes
-#if !AGS_PLATFORM_SCUMMVM
-	ConfigTree cfg;
-
-	// Last display mode
-	// TODO: force_window check is a temporary workaround (see comment below)
-	if (_G(force_window) == 0) {
-		bool is_windowed = System_GetWindowed() != 0;
-		cfg["graphics"]["windowed"] = String::FromFormat("%d", is_windowed ? 1 : 0);
-		// TODO: this is a hack, necessary because the original config system was designed when
-		// switching mode at runtime was not considered a possibility.
-		// Normally, two changes need to be done here:
-		// * the display setup needs to be reviewed and simplified a bit.
-		// * perhaps there should be two saved setups for fullscreen and windowed saved in memory
-		// (like ActiveDisplaySetting is saved currently), to know how the window size is defined
-		// in each modes (by explicit width/height values or from game scaling).
-		// This specifically *must* be done if there will be script API for modifying fullscreen
-		// resolution, or size of the window could be changed any way at runtime.
-		if (is_windowed != _GP(usetup).Screen.DisplayMode.Windowed) {
-			if (is_windowed)
-				cfg["graphics"]["screen_def"] = "scaling";
-			else
-				cfg["graphics"]["screen_def"] = "max";
-		}
-	}
-
-	// Other game options that could be changed at runtime
-	if (_GP(game).options[OPT_RENDERATSCREENRES] == kRenderAtScreenRes_UserDefined)
-		cfg["graphics"]["render_at_screenres"] = String::FromFormat("%d", _GP(usetup).RenderAtScreenRes ? 1 : 0);
-	cfg["mouse"]["control_enabled"] = String::FromFormat("%d", _GP(usetup).mouse_ctrl_enabled ? 1 : 0);
-	cfg["mouse"]["speed"] = String::FromFormat("%f", _GP(mouse).GetSpeed());
-	cfg["language"]["translation"] = _GP(usetup).translation;
-
-	String cfg_file = PreparePathForWriting(GetGameUserConfigDir(), DefaultConfigFileName);
-	if (!cfg_file.IsEmpty())
-		IniUtil::Merge(cfg_file, cfg);
-#endif
 }
 
 } // namespace AGS3

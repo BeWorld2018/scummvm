@@ -173,7 +173,7 @@ void Window::inkBlitFrom(Channel *channel, Common::Rect destRect, Graphics::Mana
 			inkBlitSurface(&pd, srcRect, channel->getMask());
 		}
 	} else {
-		warning("Window::inkBlitFrom: No source surface: spriteType: %d, castType: %d, castId: %d", channel->_sprite->_spriteType, channel->_sprite->_cast ? channel->_sprite->_cast->_type : 0, channel->_sprite->_castId);
+		warning("Window::inkBlitFrom: No source surface: spriteType: %d, castType: %d, castId: %s", channel->_sprite->_spriteType, channel->_sprite->_cast ? channel->_sprite->_cast->_type : 0, channel->_sprite->_castId.asString().c_str());
 	}
 }
 
@@ -234,7 +234,7 @@ void Window::inkBlitShape(DirectorPlotData *pd, Common::Rect &srcRect) {
 		break;
 	case kLineBottomTopSprite:
 		pd->ms->pd = &plotStroke;
-		Graphics::drawLine(strokeRect.left, strokeRect.top, strokeRect.right, strokeRect.bottom, pd->ms->foreColor, g_director->getInkDrawPixel(), pd);
+		Graphics::drawLine(strokeRect.left, strokeRect.bottom, strokeRect.right, strokeRect.top, pd->ms->foreColor, g_director->getInkDrawPixel(), pd);
 		break;
 	default:
 		warning("Window::inkBlitFrom: Expected shape type but got type %d", pd->ms->spriteType);
@@ -256,7 +256,7 @@ void Window::inkBlitSurface(DirectorPlotData *pd, Common::Rect &srcRect, const G
 			const byte *msk = mask ? (const byte *)mask->getBasePtr(pd->srcPoint.x, pd->srcPoint.y) : nullptr;
 
 			for (int j = 0; j < pd->destRect.width(); j++, pd->srcPoint.x++) {
-				if (!mask || (msk && (pd->ink == kInkTypeMask ? *msk++ : !(*msk++)))) {
+				if (!mask || (msk && !(*msk++))) {
 					(g_director->getInkDrawPixel())(pd->destRect.left + j, pd->destRect.top + i,
 											preprocessColor(pd, *((byte *)pd->srf->getBasePtr(pd->srcPoint.x, pd->srcPoint.y))), pd);
 				}
@@ -266,7 +266,7 @@ void Window::inkBlitSurface(DirectorPlotData *pd, Common::Rect &srcRect, const G
 			const uint32 *msk = mask ? (const uint32 *)mask->getBasePtr(pd->srcPoint.x, pd->srcPoint.y) : nullptr;
 
 			for (int j = 0; j < pd->destRect.width(); j++, pd->srcPoint.x++) {
-				if (!mask || (msk && (pd->ink == kInkTypeMask ? *msk++ : !(*msk++)))) {
+				if (!mask || (msk && !(*msk++))) {
 					(g_director->getInkDrawPixel())(pd->destRect.left + j, pd->destRect.top + i,
 											preprocessColor(pd, *((int *)pd->srf->getBasePtr(pd->srcPoint.x, pd->srcPoint.y))), pd);
 				}
@@ -294,7 +294,7 @@ void Window::inkBlitStretchSurface(DirectorPlotData *pd, Common::Rect &srcRect, 
 			const byte *msk = mask ? (const byte *)mask->getBasePtr(pd->srcPoint.x, pd->srcPoint.y) : nullptr;
 
 			for (int xCtr = 0, scaleXCtr = 0; xCtr < pd->destRect.width(); xCtr++, scaleXCtr += scaleX, pd->srcPoint.x++) {
-				if (!mask || (msk && (pd->ink == kInkTypeMask ? *msk++ : !(*msk++)))) {
+				if (!mask || !(*msk++)) {
 				(g_director->getInkDrawPixel())(pd->destRect.left + xCtr, pd->destRect.top + i,
 										preprocessColor(pd, *((byte *)pd->srf->getBasePtr(scaleXCtr / SCALE_THRESHOLD, scaleYCtr / SCALE_THRESHOLD))), pd);
 				}
@@ -304,7 +304,7 @@ void Window::inkBlitStretchSurface(DirectorPlotData *pd, Common::Rect &srcRect, 
 			const uint32 *msk = mask ? (const uint32 *)mask->getBasePtr(pd->srcPoint.x, pd->srcPoint.y) : nullptr;
 
 			for (int xCtr = 0, scaleXCtr = 0; xCtr < pd->destRect.width(); xCtr++, scaleXCtr += scaleX, pd->srcPoint.x++) {
-				if (!mask || (msk && (pd->ink == kInkTypeMask ? *msk++ : !(*msk++)))) {
+				if (!mask || !(*msk++)) {
 				(g_director->getInkDrawPixel())(pd->destRect.left + xCtr, pd->destRect.top + i,
 										preprocessColor(pd, *((int *)pd->srf->getBasePtr(scaleXCtr / SCALE_THRESHOLD, scaleYCtr / SCALE_THRESHOLD))), pd);
 				}
@@ -320,7 +320,7 @@ int Window::preprocessColor(DirectorPlotData *p, uint32 src) {
 	if (p->sprite == kTextSprite) {
 		switch(p->ink) {
 		case kInkTypeMask:
-			src = (src == p->backColor ? 0xff : p->foreColor);
+			src = (src == p->backColor ? p->foreColor : 0xff);
 			break;
 		case kInkTypeReverse:
 			src = (src == p->foreColor ? 0 : p->colorWhite);

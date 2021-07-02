@@ -411,6 +411,8 @@ void EditGameDialog::open() {
 	e = ConfMan.hasKey("gfx_mode", _domain) ||
 		ConfMan.hasKey("render_mode", _domain) ||
 		ConfMan.hasKey("stretch_mode", _domain) ||
+		ConfMan.hasKey("scaler", _domain) ||
+		ConfMan.hasKey("scale_factor", _domain) ||
 		ConfMan.hasKey("aspect_ratio", _domain) ||
 		ConfMan.hasKey("fullscreen", _domain) ||
 		ConfMan.hasKey("vsync", _domain) ||
@@ -650,6 +652,9 @@ void EditGameDialog::handleCommand(CommandSender *sender, uint32 cmd, uint32 dat
 			_domain = newDomain;
 			if (_engineOptions) {
 				_engineOptions->setDomain(newDomain);
+			}
+			if (_backendOptions) {
+				_backendOptions->setDomain(newDomain);
 			}
 		}
 	}

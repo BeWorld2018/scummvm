@@ -139,8 +139,8 @@ TrecisionEngine::TrecisionEngine(OSystem *syst, const ADGameDescription *desc) :
 	_flagWaitRegen = false;
 
 	for (int i = 0; i < MAXOBJINROOM; ++i) {
-		_objPointers[i] = nullptr;
-		_maskPointers[i] = nullptr;
+		_objectGraphics[i].buf = nullptr;
+		_objectGraphics[i].mask = nullptr;
 	}
 
 	_curTime = 0;
@@ -151,7 +151,8 @@ TrecisionEngine::TrecisionEngine(OSystem *syst, const ADGameDescription *desc) :
 	_cx = _cy = 0;
 
 	_textArea = nullptr;
-	_snake52 = {MC_IDLE, 0, MP_DEFAULT, 0, 0, 0, 0};
+	Message msg = { MC_IDLE, 0, MP_DEFAULT, 0, 0, 0, 0 };
+	_snake52 = msg;
 	for (int i = 0; i < 50; ++i)
 		_scriptFrame[i].clear();
 
@@ -180,8 +181,8 @@ TrecisionEngine::~TrecisionEngine() {
 	delete[] _textArea;
 
 	for (int i = 0; i < MAXOBJINROOM; ++i) {
-		delete[] _objPointers[i];
-		delete[] _maskPointers[i];
+		delete[] _objectGraphics[i].buf;
+		delete[] _objectGraphics[i].mask;
 	}
 }
 
@@ -339,6 +340,15 @@ void TrecisionEngine::setObjectVisible(uint16 objectId, bool visible) {
 }
 
 void TrecisionEngine::refreshObject(uint16 objectId) {
+	for (int i = 0; i < MAXOBJINROOM; ++i) {
+		if (!_room[_curRoom]._object[i])
+			return;	// reached the end of the list, object not found
+
+		if (objectId == _room[_curRoom]._object[i]) {
+			break;	// object found in room objects, continue
+		}
+	}
+
 	if (_obj[objectId].isModeMask() || _obj[objectId].isModeFull()) {
 		SSortTable entry;
 		entry._objectId = objectId;

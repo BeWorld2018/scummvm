@@ -39,10 +39,14 @@
 
 namespace Trecision {
 
-GraphicsManager::GraphicsManager(TrecisionEngine *vm) : _vm(vm),  _font(nullptr), kImageFormat(2, 5, 5, 5, 0, 10, 5, 0, 0) {	
-	// RGB555
+GraphicsManager::GraphicsManager(TrecisionEngine *vm) : _vm(vm), _rgb555Format(2, 5, 5, 5, 0, 10, 5, 0, 0) {	
 	for (int i = 0; i < 3; ++i)
 		_bitMask[i] = 0;
+
+	for (int i = 0; i < 256; ++i) {
+		_fonts[i]._width = 0;
+		_fonts[i]._data = nullptr;
+	}
 }
 
 GraphicsManager::~GraphicsManager() {
@@ -55,27 +59,27 @@ GraphicsManager::~GraphicsManager() {
 	_saveSlotThumbnails.free();
 	_textureMat.free();
 
-	delete[] _font;
+	for (int i = 0; i < 256; ++i)
+		delete[] _fonts[i]._data;
 }
 
 bool GraphicsManager::init() {
-	const Graphics::PixelFormat *bestFormat = &kImageFormat;
-
-	// Find a 16-bit format, currently we don't support other color depths
+	// Find a suitable 16-bit format, currently we don't support other color depths
 	Common::List<Graphics::PixelFormat> formats = g_system->getSupportedFormats();
-	bool found = false;
-	for (Common::List<Graphics::PixelFormat>::const_iterator i = formats.begin(); i != formats.end(); ++i) {
-		if (i->bytesPerPixel == 2) {
-			bestFormat = &*i;
-			found = true;
+	for (Common::List<Graphics::PixelFormat>::iterator it = formats.begin(); it != formats.end(); ++it) {
+		if (it->bytesPerPixel != 2 || it->aBits()) {
+			it = formats.reverse_erase(it);
+		} else if (*it == _rgb555Format) {
+			formats.clear();
+			formats.push_back(_rgb555Format);
 			break;
 		}
 	}
 
-	if (!found)
+	if (formats.empty())
 		return false;
 
-	initGraphics(MAXX, MAXY, bestFormat);
+	initGraphics(MAXX, MAXY, formats);
 
 	_screenFormat = g_system->getScreenFormat();
 	if (_screenFormat.bytesPerPixel != 2)
@@ -111,9 +115,9 @@ void GraphicsManager::drawObj(int index, bool mask, Common::Rect drawRect, Commo
 
 	// If we have a valid object, draw it, otherwise erase it
 	// by using the background buffer
-	const uint16 *buf = index >= 0 ? _vm->_objPointers[index] : (uint16 *)_smkBackground.getPixels();
+	const uint16 *buf = index >= 0 ? _vm->_objectGraphics[index].buf : (uint16 *)_smkBackground.getPixels();
 	if (mask && index >= 0) {
-		uint8 *maskPtr = _vm->_maskPointers[index];
+		uint8 *maskPtr = _vm->_objectGraphics[index].mask;
 
 		for (uint16 y = drawRect.top; y < drawRect.bottom; ++y) {
 			uint16 sco = 0;
@@ -235,12 +239,12 @@ void GraphicsManager::copyToScreen(int x, int y, int w, int h) {
 }
 
 void GraphicsManager::readSurface(Common::SeekableReadStream *stream, Graphics::Surface *surface, uint16 width, uint16 height, uint16 count) {
-	surface->create(width * count, height, kImageFormat);
+	surface->create(width * count, height, _rgb555Format);
 
 	for (uint16 i = 0; i < count; ++i) {
 		for (uint16 y = 0; y < height; ++y) {
 			void *p = surface->getBasePtr(width * i, y);
-			stream->read(p, width * kImageFormat.bytesPerPixel);
+			stream->read(p, width * _rgb555Format.bytesPerPixel);
 		}
 	}
 
@@ -274,7 +278,7 @@ void GraphicsManager::loadData() {
 	readSurface(iconsDataFile, &_inventoryIcons, ICONDX, ICONDY, READICON);
 	delete iconsDataFile;
 
-	_font = _vm->readData("nlfont.fnt");
+	loadFont();
 }
 
 void GraphicsManager::setSaveSlotThumbnail(byte iconSlot, const Graphics::Surface *thumbnail) {
@@ -344,7 +348,7 @@ void GraphicsManager::clearScreenBufferSaveSlotDescriptions() {
 
 uint16 GraphicsManager::convertToScreenFormat(uint16 color) const {
 	uint8 r, g, b;
-	kImageFormat.colorToRGB(color, r, g, b);
+	_rgb555Format.colorToRGB(color, r, g, b);
 	return (uint16)_screenFormat.RGBToColor(r, g, b);
 }
 
@@ -359,11 +363,11 @@ void GraphicsManager::shadow(uint16 x, uint16 y, uint8 num) {
 	}
 
 	const uint16 val = (uint16)_screenBuffer.getPixel(x, y);
-	const uint16 shadow =
+	const uint16 shadowVal =
 			((((val & _bitMask[2]) * num >> 7) & _bitMask[2]) |
 			(((val & _bitMask[1]) * num >> 7) & _bitMask[1]) |
 			(((val & _bitMask[0]) * num >> 7) & _bitMask[0]));
-	_screenBuffer.setPixel(x, y, shadow);
+	_screenBuffer.setPixel(x, y, shadowVal);
 }
 
 void GraphicsManager::pixelAliasing(uint16 x, uint16 y) {
@@ -523,9 +527,9 @@ void GraphicsManager::paintScreen(bool flag) {
 	}
 
 	// Suppress all the objects you removed
-	for (Common::List<SSortTable>::iterator i = _vm->_sortTable.begin(); i != _vm->_sortTable.end(); ++i) {
-		if (i->_remove) {
-			drawObj(-1, false, Common::Rect(0, TOP, MAXX, AREA + TOP), _vm->_obj[i->_objectId]._rect);
+	for (Common::List<SSortTable>::iterator it = _vm->_sortTable.begin(); it != _vm->_sortTable.end(); ++it) {
+		if (it->_remove) {
+			drawObj(-1, false, Common::Rect(0, TOP, MAXX, AREA + TOP), _vm->_obj[it->_objectId]._rect);
 		}
 	}
 
@@ -575,27 +579,27 @@ void GraphicsManager::paintObjAnm(uint16 curBox) {
 	_vm->_animMgr->refreshAnim(curBox);
 
 	// draws new cards belonging to the current box
-	for (Common::List<SSortTable>::iterator i = _vm->_sortTable.begin(); i != _vm->_sortTable.end(); ++i) {
-		if (!i->_remove && _vm->_obj[i->_objectId]._nbox == curBox) {
+	for (Common::List<SSortTable>::iterator it = _vm->_sortTable.begin(); it != _vm->_sortTable.end(); ++it) {
+		if (!it->_remove && _vm->_obj[it->_objectId]._nbox == curBox) {
 			// the bitmap object at the desired level
-			SObject obj = _vm->_obj[i->_objectId];
+			SObject obj = _vm->_obj[it->_objectId];
 			Common::Rect drawRect = obj._rect;
 			drawRect.translate(0, TOP);
-			drawObj(_vm->getRoomObjectIndex(i->_objectId), obj.isModeMask(), drawRect, Common::Rect(drawRect.width(), drawRect.height()), false);
+			drawObj(_vm->getRoomObjectIndex(it->_objectId), obj.isModeMask(), drawRect, Common::Rect(drawRect.width(), drawRect.height()), false);
 			_dirtyRects.push_back(drawRect);
 		}
 	}
 
-	for (DirtyRectsIterator d = _dirtyRects.begin(); d != _dirtyRects.end(); ++d) {
-		for (int b = 0; b < MAXOBJINROOM; ++b) {
-			const uint16 curObject = _vm->_room[_vm->_curRoom]._object[b];
+	for (DirtyRectsIterator it = _dirtyRects.begin(); it != _dirtyRects.end(); ++it) {
+		for (int i = 0; i < MAXOBJINROOM; ++i) {
+			const uint16 curObject = _vm->_room[_vm->_curRoom]._object[i];
 			if (!curObject)
 				break;
 
 			SObject obj = _vm->_obj[curObject];
 
 			if ((obj.isModeFull() || obj.isModeMask()) && _vm->isObjectVisible(curObject) && (obj._nbox == curBox)) {
-				Common::Rect r = *d;
+				Common::Rect r = *it;
 				Common::Rect r2 = obj._rect;
 
 				r2.translate(0, TOP);
@@ -617,7 +621,7 @@ void GraphicsManager::paintObjAnm(uint16 curBox) {
 					const int16 yr1 = (r2.top > r.top) ? 0 : r.top - r2.top;
 					const int16 xr2 = MIN<int16>(r.right, r2.right) - r2.left;
 					const int16 yr2 = MIN<int16>(r.bottom, r2.bottom) - r2.top;
-					drawObj(b, obj.isModeMask(), drawRect, Common::Rect(xr1, yr1, xr2, yr2), false);
+					drawObj(i, obj.isModeMask(), drawRect, Common::Rect(xr1, yr1, xr2, yr2), false);
 				}
 			}
 		}
@@ -643,12 +647,11 @@ void GraphicsManager::paintObjAnm(uint16 curBox) {
 }
 
 uint16 GraphicsManager::getCharWidth(byte character) {
-	return _font[character * 3 + 2];
+	return _fonts[character]._width;
 }
 
 void GraphicsManager::drawChar(byte curChar, uint16 textColor, uint16 line, Common::Rect rect, Common::Rect subtitleRect, uint16 inc, Graphics::Surface *externalSurface) {
-	const uint16 charOffset = _font[curChar * 3] + (uint16)(_font[curChar * 3 + 1] << 8);
-	uint16 fontDataOffset = 768;
+	uint16 fontDataOffset = 0;
 	const uint16 charWidth = getCharWidth(curChar);
 
 	for (uint16 y = line * CARHEI; y < (line + 1) * CARHEI; ++y) {
@@ -657,9 +660,9 @@ void GraphicsManager::drawChar(byte curChar, uint16 textColor, uint16 line, Comm
 
 		while (curPos <= charWidth - 1) {
 			if (y >= subtitleRect.top && y < subtitleRect.bottom) {
-				if (curColor != MASKCOL && (_font[charOffset + fontDataOffset])) {
+				if (curColor != MASKCOL && _fonts[curChar]._data[fontDataOffset]) {
 					const uint16 charLeft = inc + curPos;
-					const uint16 charRight = charLeft + _font[charOffset + fontDataOffset];
+					const uint16 charRight = charLeft + _fonts[curChar]._data[fontDataOffset];
 					drawCharPixel(
 						y,
 						charLeft,
@@ -672,7 +675,7 @@ void GraphicsManager::drawChar(byte curChar, uint16 textColor, uint16 line, Comm
 				}
 			}
 
-			curPos += _font[charOffset + fontDataOffset];
+			curPos += _fonts[curChar]._data[fontDataOffset];
 			++fontDataOffset;
 
 			if (curColor == MASKCOL)
@@ -737,6 +740,79 @@ void GraphicsManager::showCursor() {
 
 void GraphicsManager::hideCursor() {
 	CursorMan.showMouse(false);
+}
+
+void GraphicsManager::loadFont() {
+	Common::String fileName = "nlfont.fnt";
+	Common::SeekableReadStream *fontStream = _vm->_dataFile.createReadStreamForMember(fileName);
+	if (fontStream == nullptr)
+		error("readData(): File %s not found", fileName.c_str());
+
+	uint16 fontDataOffset = 768;
+
+	for (int i = 0; i < 256; ++i) {
+		uint16 offset = fontStream->readSint16LE();
+		_fonts[i]._width = fontStream->readByte();
+
+		int tmpPos = fontStream->pos();
+		fontStream->seek(offset + fontDataOffset);
+
+		int cpt = 0;
+		for (uint16 y = 0; y < CARHEI; ++y) {
+			uint16 curPos = 0;
+			while (curPos <= _fonts[i]._width - 1) {
+				curPos += fontStream->readByte();
+				++cpt;
+			}
+		}
+
+		fontStream->seek(offset + fontDataOffset);
+		_fonts[i]._data = new int8[cpt];
+		fontStream->read(_fonts[i]._data, cpt);
+		fontStream->seek(tmpPos);
+	}
+
+	// Fix o+e ligature character (lowercase and uppercase). Ticket #12623
+
+	// Format is :
+	// - Each line represents a line of pixels
+	// - colors are in this order : none, shadow, text. Colors are looping until the total number of pixels corresponds to the character width
+	// - each number correspond to a number of pixels of the corresponding color
+	// So, 1, 6, 0, 2 means : 1 pixel unchanged, 6 pixels shadow, 0 pixel in text color, 2 pixels unchanged
+	static const int8 fix140[67] = {
+		1, 8,
+		0, 2, 2, 0, 1, 3, 0, 1,
+		0, 1, 1, 0, 2, 2, 0, 3,
+		0, 1, 1, 0, 3, 1, 0, 2, 0, 1,
+		0, 1, 1, 0, 3, 2, 0, 1, 0, 1,
+		0, 1, 1, 0, 3, 1, 0, 2, 0, 1,
+		0, 1, 1, 0, 2, 2, 0, 3,
+		0, 2, 2, 0, 1, 3, 0, 1,
+		1, 8,
+		9
+	};
+
+	static const int8 fix156[54] = {
+		9,
+		9,
+		1, 6, 0, 2,
+		0, 2, 2, 0, 1, 2, 0, 1, 0, 1,
+		0, 1, 1, 0, 2, 1, 0, 2, 1, 0, 1,
+		0, 1, 1, 0, 2, 4, 0, 1,
+		0, 1, 1, 0, 2, 1, 0, 4,
+		0, 2, 2, 0, 1, 3, 0, 1,
+		1, 8,
+		9
+	};
+
+	delete _fonts[140]._data;
+	delete _fonts[156]._data;
+	_fonts[140]._width = _fonts[156]._width = 9;
+	_fonts[140]._data = new int8[67];
+	_fonts[156]._data = new int8[54];
+
+	memcpy(_fonts[140]._data, fix140, 67);
+	memcpy(_fonts[156]._data, fix156, 54);
 }
 
 bool GraphicsManager::isCursorVisible() {

@@ -541,13 +541,14 @@ TextCastMember::TextCastMember(Cast *cast, uint16 castId, Common::SeekableReadSt
 	_textSlant = 0;
 	_bgpalinfo1 = _bgpalinfo2 = _bgpalinfo3 = 0;
 	_fgpalinfo1 = _fgpalinfo2 = _fgpalinfo3 = 0xff;
+	_widget = nullptr;
 
 	if (version < kFileVer400) {
 		_flags1 = flags1; // region: 0 - auto, 1 - matte, 2 - disabled
 		_borderSize = static_cast<SizeType>(stream.readByte());
 		_gutterSize = static_cast<SizeType>(stream.readByte());
 		_boxShadow = static_cast<SizeType>(stream.readByte());
-		byte pad1 = stream.readByte();
+		_textType = static_cast<TextType>(stream.readByte());
 		_textAlign = static_cast<TextAlignType>(stream.readUint16());
 		_bgpalinfo1 = stream.readUint16();
 		_bgpalinfo2 = stream.readUint16();
@@ -581,8 +582,8 @@ TextCastMember::TextCastMember(Cast *cast, uint16 castId, Common::SeekableReadSt
 			totalTextHeight = stream.readUint16();
 		}
 
-		debugC(2, kDebugLoading, "TextCastMember(): flags1: %d, border: %d gutter: %d shadow: %d pad1: %x align: %04x",
-				_flags1, _borderSize, _gutterSize, _boxShadow, pad1, _textAlign);
+		debugC(2, kDebugLoading, "TextCastMember(): flags1: %d, border: %d gutter: %d shadow: %d textType: %d align: %04x",
+				_flags1, _borderSize, _gutterSize, _boxShadow, _textType, _textAlign);
 		debugC(2, kDebugLoading, "TextCastMember(): background rgb: 0x%04x 0x%04x 0x%04x, pad2: %x pad3: %d pad4: %d shadow: %d flags: %d totHeight: %d",
 				_bgpalinfo1, _bgpalinfo2, _bgpalinfo3, pad2, pad3, pad4, _textShadow, _textFlags, totalTextHeight);
 		if (debugChannelSet(2, kDebugLoading)) {
@@ -657,6 +658,12 @@ void TextCastMember::setColors(uint32 *fgcolor, uint32 *bgcolor) {
 
 	if (bgcolor)
 		_bgcolor = *bgcolor;
+
+	// if we want to keep the format unchanged, then we need to modify _ftext as well
+	if (_widget)
+		((Graphics::MacText *)_widget)->setColors(_fgcolor, _bgcolor);
+	else
+		_modified = true;
 }
 
 Graphics::TextAlign TextCastMember::getAlignment() {
@@ -682,36 +689,22 @@ void TextCastMember::importStxt(const Stxt *stxt) {
 	_ptext = stxt->_ptext;
 }
 
-// calculate text dimensions in mactext
-// formula comes from the ctor of macwidget and mactext
-//	_dims.left = x;
-//	_dims.right = x + w + (2 * border) + (2 * gutter) + shadow;
-//	_dims.top = y;
-//	_dims.bottom = y + h + (2 * border) + gutter + shadow;
-// x, y, w + 2, h
-Common::Rect TextCastMember::getTextOnlyDimensions(const Common::Rect &targetDims) {
-	int w = targetDims.right - targetDims.left - 2 * _borderSize - 2 * _gutterSize - _boxShadow;
-	int h = targetDims.bottom - targetDims.top - 2 * _borderSize - _gutterSize - _boxShadow;
-	w -= 2;
-	return Common::Rect(w, h);
-}
-
 Graphics::MacWidget *TextCastMember::createWidget(Common::Rect &bbox, Channel *channel) {
 	Graphics::MacFont *macFont = new Graphics::MacFont(_fontId, _fontSize, _textSlant);
 	Graphics::MacWidget *widget = nullptr;
-	Common::Rect dims;
+	Common::Rect dims(bbox);
 
 	switch (_type) {
 	case kCastText:
-		// since mactext will add some offsets itself, then we calculate it first, to make sure the result size is the same as bbox
-		// use the initialRect for the dims, (seems like initialRect is same as bbox since we once called setCast)
-		dims = getTextOnlyDimensions(_initialRect);
-		widget = new Graphics::MacText(g_director->getCurrentWindow(), bbox.left, bbox.top, dims.width(), dims.height(), g_director->_wm, _ftext, macFont, getForeColor(), getBackColor(), dims.width(), getAlignment(), 0, _borderSize, _gutterSize, _boxShadow, _textShadow);
+		// for mactext, we can expand now, but we can't shrink. so we may pass the small size when we have adjustToFit text style
+		if (_textType == kTextTypeAdjustToFit) {
+			dims.right = MIN<int>(dims.right, dims.left + _initialRect.width());
+			dims.bottom = MIN<int>(dims.bottom, dims.top + _initialRect.height());
+		}
+		widget = new Graphics::MacText(g_director->getCurrentWindow(), bbox.left, bbox.top, dims.width(), dims.height(), g_director->_wm, _ftext, macFont, getForeColor(), getBackColor(), _initialRect.width(), getAlignment(), 0, _borderSize, _gutterSize, _boxShadow, _textShadow, Common::kMacCentralEurope, _textType == kTextTypeFixed);
 		((Graphics::MacText *)widget)->setSelRange(g_director->getCurrentMovie()->_selStart, g_director->getCurrentMovie()->_selEnd);
-		((Graphics::MacText *)widget)->draw();
-		((Graphics::MacText *)widget)->_focusable = _editable;
 		((Graphics::MacText *)widget)->setEditable(_editable);
-		((Graphics::MacText *)widget)->_selectable = _editable;
+		((Graphics::MacText *)widget)->draw();
 
 		// since we disable the ability of setActive in setEdtiable, then we need to set active widget manually
 		if (_editable) {
@@ -719,15 +712,18 @@ Graphics::MacWidget *TextCastMember::createWidget(Common::Rect &bbox, Channel *c
 			if (activeWidget == nullptr || !activeWidget->isEditable())
 				g_director->_wm->setActiveWidget(widget);
 		}
+		// just a link to the widget which we created. we may use it later
+		_widget = widget;
 		break;
 
 	case kCastButton:
 		// note that we use _initialRect for the dimensions of the button;
 		// the values provided in the sprite bounding box are ignored
-		widget = new Graphics::MacButton(Graphics::MacButtonType(_buttonType), getAlignment(), g_director->getCurrentWindow(), bbox.left, bbox.top, _initialRect.width(), _initialRect.height(), g_director->_wm, _ftext, macFont, getForeColor(), 0xff);
-		((Graphics::MacButton *)widget)->draw();
+		widget = new Graphics::MacButton(Graphics::MacButtonType(_buttonType), getAlignment(), g_director->getCurrentWindow(), bbox.left, bbox.top, _initialRect.width(), _initialRect.height(), g_director->_wm, _ftext, macFont, getForeColor(), 0xff, Common::kMacCentralEurope);
 		widget->_focusable = true;
 
+		((Graphics::MacButton *)widget)->setHilite(_hilite);
+		((Graphics::MacButton *)widget)->setCheckBoxType(g_director->getCurrentMovie()->_checkBoxType);
 		((Graphics::MacButton *)widget)->draw();
 		break;
 
@@ -757,7 +753,15 @@ void TextCastMember::setText(const char *text) {
 	_ptext = text;
 	_ftext = formatting + text;
 
-	_modified = true;
+	// if we have the link to widget, then we modify it directly.
+	// thus we can reach the immediate changing effect
+	if (_widget) {
+		((Graphics::MacText *)_widget)->setText(_ftext);
+		((Graphics::MacText *)_widget)->draw();
+		g_director->getCurrentWindow()->addDirtyRect(_widget->_dims);
+	} else {
+		_modified = true;
+	}
 }
 
 Common::String TextCastMember::getText() {
@@ -770,6 +774,9 @@ bool TextCastMember::isEditable() {
 
 void TextCastMember::setEditable(bool editable) {
 	_editable = editable;
+	// if we are linking to the widget, then we can modify it directly.
+	if (_widget)
+		((Graphics::MacText *)_widget)->setEditable(editable);
 }
 
 void TextCastMember::updateFromWidget(Graphics::MacWidget *widget) {
