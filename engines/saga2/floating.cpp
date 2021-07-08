@@ -58,7 +58,7 @@ extern gToolBase    G_BASE;
 //  need to know about the scrolling tile area.
 
 extern gPixelMap    tileDrawMap;
-extern Point16      fineScroll;
+extern StaticPoint16 fineScroll;
 extern gFont        *mainFont;
 extern bool         allPlayerActorsDead;
 
@@ -522,7 +522,7 @@ void LabeledButton::drawClipped(
 
 FloatingWindow::FloatingWindow(const Rect16 &r, uint16 ident, const char saveas[], AppFunc *cmd)
 	: DecoratedWindow(r, ident, saveas, cmd) {
-	assert(db = new DragBar(*this, Rect16(0, 0, r.width, r.height)));
+	db = new DragBar(*this, Rect16(0, 0, r.width, r.height));
 
 	origPos.x = r.x;
 	origPos.y = r.y;
@@ -612,7 +612,6 @@ bool checkTileAreaPort(void);
 extern bool userControlsSetup;
 
 void updateWindowSection(const Rect16 &r) {
-	DecoratedWindow *dw;
 	gPixelMap       tempMap;
 	gPort           tempPort;
 	Point16         offset(r.x, r.y);
@@ -681,11 +680,8 @@ void updateWindowSection(const Rect16 &r) {
 	//  For each window, both background and float, that overlaps
 	//  the clip, draw the window's imagery
 	if (userControlsSetup) {
-		for (dw = (DecoratedWindow *)G_BASE.bottomWindow();
-		        dw;
-		        dw = (DecoratedWindow *)dw->prev()) {
-			dw->drawClipped(tempPort, offset, clip);
-		}
+		for (Common::List<gWindow *>::iterator it = G_BASE.bottomWindowIterator(); it != G_BASE.topWindowIterator(); --it)
+			(*it)->drawClipped(tempPort, offset, clip);
 	}
 	//  Now, blit the temporary bitmap to the main screen.
 
@@ -735,9 +731,8 @@ void drawFloatingWindows(gPort &port, const Point16 &offset, const Rect16 &clip)
 		}
 	}
 
-	for (dw = (DecoratedWindow *)G_BASE.bottomWindow();
-	        dw;
-	        dw = (DecoratedWindow *)dw->prev()) {
+	for (Common::List<gWindow *>::iterator it = G_BASE.bottomWindowIterator(); it != G_BASE.topWindowIterator(); --it) {
+		dw = (DecoratedWindow *)(*it);
 		if (!dw->isBackdrop())
 			dw->drawClipped(port, offset, clip);
 	}

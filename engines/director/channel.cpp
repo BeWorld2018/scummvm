@@ -302,6 +302,12 @@ void Channel::setClean(Sprite *nextSprite, int spriteId, bool partial) {
 	CastMemberID previousCastId(0, 0);
 	bool replace = isDirty(nextSprite);
 
+	// for dirty situation that we need to replace widget.
+	// if cast are modified, then we need to replace it
+	// if cast size are changed, and we may need to replace it, because we may having the scaled bitmap castmember
+	// other situation, e.g. position changing, we will let channel to handle it. So we don't have to replace widget
+	bool dimsChanged = !_sprite->_stretch && !hasTextCastMember(_sprite) && (_sprite->_width != nextSprite->_width || _sprite->_height != nextSprite->_height);
+
 	if (nextSprite) {
 		if (nextSprite->_cast && (_dirty || _sprite->_castId != nextSprite->_castId)) {
 			if (nextSprite->_cast->_type == kCastDigitalVideo) {
@@ -328,7 +334,7 @@ void Channel::setClean(Sprite *nextSprite, int spriteId, bool partial) {
 
 	if (replace) {
 		_sprite->updateCast();
-		replaceWidget(previousCastId);
+		replaceWidget(previousCastId, dimsChanged);
 	}
 
 	updateTextCast();
@@ -400,6 +406,7 @@ void Channel::replaceSprite(Sprite *nextSprite) {
 	if (_sprite->_cast && !canKeepWidget(_sprite, nextSprite)) {
 		widgetKeeped = false;
 		_sprite->_cast->releaseWidget();
+		newSprite = true;
 	}
 
 	int width = _width;
@@ -469,9 +476,9 @@ bool Channel::canKeepWidget(Sprite *currentSprite, Sprite *nextSprite) {
 
 // currently, when we are setting hilite, we delete the widget and the re-create it
 // so we may optimize this if this operation takes much time
-void Channel::replaceWidget(CastMemberID previousCastId) {
+void Channel::replaceWidget(CastMemberID previousCastId, bool force) {
 	// if the castmember is the same, and we are not modifying anything which cannot be handle by channel. Then we don't replace the widget
-	if (canKeepWidget(previousCastId)) {
+	if (!force && canKeepWidget(previousCastId)) {
 		debug(5, "Channel::replaceWidget(): skip deleting %s", _sprite->_castId.asString().c_str());
 		return;
 	}
@@ -519,18 +526,23 @@ void Channel::addRegistrationOffset(Common::Point &pos, bool subtract) {
 		return;
 
 	switch (_sprite->_cast->_type) {
-	case kCastBitmap:
-		{
-			BitmapCastMember *bc = (BitmapCastMember *)(_sprite->_cast);
+	case kCastBitmap: {
+		BitmapCastMember *bc = (BitmapCastMember *)(_sprite->_cast);
 
-			if (subtract)
-				pos -= Common::Point(bc->_initialRect.left - bc->_regX,
-															bc->_initialRect.top - bc->_regY);
-			else
-				pos += Common::Point(bc->_initialRect.left - bc->_regX,
-															bc->_initialRect.top - bc->_regY);
+		Common::Point point(0, 0);
+		// stretch the offset
+		if (!_sprite->_stretch && (_width < bc->_initialRect.width() || _height < bc->_initialRect.height())) {
+			point.x = (bc->_initialRect.left - bc->_regX) * _width / bc->_initialRect.width();
+			point.y = (bc->_initialRect.top - bc->_regY) * _height / bc->_initialRect.height();
+		} else {
+			point.x = bc->_initialRect.left - bc->_regX;
+			point.y = bc->_initialRect.top - bc->_regY;
 		}
-		break;
+		if (subtract)
+			pos -= point;
+		else
+			pos += point;
+	} break;
 	case kCastDigitalVideo:
 		pos -= Common::Point(_sprite->_cast->_initialRect.width() >> 1, _sprite->_cast->_initialRect.height() >> 1);
 		break;

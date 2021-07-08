@@ -27,6 +27,8 @@
 #ifndef SAGA2_SAVEFILE_H
 #define SAGA2_SAVEFILE_H
 
+#include "common/savefile.h"
+
 namespace Saga2 {
 
 /* ===================================================================== *
@@ -36,11 +38,7 @@ namespace Saga2 {
 const int16     saveNameSize = 40,
                 fileNameSize = 260;
 
-#ifdef FTA
 const ChunkID   gameID = MKTAG('F', 'T', 'A', '2');
-#else
-const ChunkID   gameID = MKTAG('D', 'I', 'N', 'O');
-#endif
 
 /* ===================================================================== *
    SaveFileHeader class
@@ -50,11 +48,17 @@ const ChunkID   gameID = MKTAG('D', 'I', 'N', 'O');
 //	file.  It stores the game ID and the long name of the saved game state.
 
 struct SaveFileHeader {
-	ChunkID     gameID;                     //  ID of game (FTA2 of DINO).
-	char        saveName[saveNameSize];   //  The long name of the saved
-	//  game state.
-	int8        reserved[84];             //  Room for expansion.
-};  //  128 bytes
+	enum {
+		kSaveNameSize = 40,
+		kHeaderSize = 128
+	};
+
+	ChunkID gameID;                     //  ID of game (FTA2 of DINO).
+	Common::String saveName;            //  The long name of the saved
+
+	void read(Common::InSaveFile *in);
+	void write(Common::OutSaveFile *out);
+};
 
 /* ===================================================================== *
    SaveFileChunkInfo class
@@ -127,8 +131,8 @@ public:
 	~SaveFileReader(void);
 
 	//  Return a pointer to the long name of the save game state
-	char *saveName(void) {
-		return header.saveName;
+	const char *saveName(void) {
+		return header.saveName.c_str();
 	}
 
 	//  Return the number of bytes in the current chunk
@@ -151,6 +155,9 @@ public:
 		return chunkSize - posInChunk;
 	}
 };
+
+bool firstChunk(Common::InSaveFile *in, ChunkID &chunk, int32 &size);
+bool nextChunk(Common::InSaveFile *in, ChunkID &chunk, int32 &size);
 
 } // end of namespace Saga2
 

@@ -37,10 +37,6 @@
 #include "saga2/script.h"
 #include "saga2/audio.h"
 
-#include "saga2/queues.h"
-#include "saga2/audiosmp.h"
-#include "saga2/audiosys.h"
-
 #include "saga2/uidialog.h"
 #include "saga2/document.h"
 #include "saga2/tilemode.h"
@@ -593,9 +589,9 @@ char **initFileFields(void) {
 		strings[i] = new char[editLen + 1];
 
 		if (getSaveName(i, header)) {
-			strncpy(strings[i], header.saveName, editLen);
+			Common::strlcpy(strings[i], header.saveName.c_str(), editLen);
 		} else {
-			strncpy(strings[i], FILE_DIALOG_NONAME, editLen);
+			Common::strlcpy(strings[i], FILE_DIALOG_NONAME, editLen);
 			strings[i][0] |= 0x80;
 		}
 
@@ -627,24 +623,16 @@ void destroyFileFields(char **strings) {
 }
 
 bool getSaveName(int8 saveNo, SaveFileHeader &header) {
-	FILE            *fileHandle;            //  A standard C file handle
-	char            fileName[fileNameSize + 1];
+	Common::InSaveFile *in = g_system->getSavefileManager()->openForLoading(getSaveFileName(saveNo));
 
-	//  Construct the file name based on the save number
-	getSaveFileName(saveNo, fileName);
-
-	//  Open the file or throw an exception
-	if ((fileHandle = fopen(fileName, "rb")) == nullptr) {
+	if (!in) {
+		debugC(1, kDebugSaveload, "Unable to load save %d (%s)", saveNo, getSaveFileName(saveNo).c_str());
 		return false;
 	}
 
-	//  Read the save file header
-	if (fread(&header, sizeof(header), 1, fileHandle) != 1) {
-		return false;
-	}
+	header.read(in);
 
-	// close the used file handle
-	if (fileHandle != nullptr) fclose(fileHandle);
+	delete in;
 
 	return true;
 }
@@ -1831,6 +1819,8 @@ APPFUNC(cmdSpeechText) {
 	if (isUserAction(ev)) {
 		g_vm->_speechText = !g_vm->_speechText;
 		speechTextBtn->select(g_vm->_speechText);
+
+		ConfMan.setBool("subtitles", g_vm->_speechText);
 	}
 }
 
@@ -1849,8 +1839,7 @@ APPFUNC(cmdSetMIDIVolume) {
 
 APPFUNC(cmdSetDIGVolume) {
 	int16 v = quantizedVolume(ev.value);
-	ConfMan.setInt("speech_volume", v);
-	ConfMan.setInt("sfx_volume", v);
+	ConfMan.setInt("music_volume", v);
 	g_vm->syncSoundSettings();
 	volumeChanged();
 }

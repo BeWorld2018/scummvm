@@ -347,6 +347,18 @@ void MacText::setColors(uint32 fg, uint32 bg) {
 		setTextColor(fg, i);
 }
 
+void MacText::setTextSize(int textSize) {
+	for (uint i = 0; i < _textLines.size(); i++) {
+		for (uint j = 0; j < _textLines[i].chunks.size(); j++) {
+			_textLines[i].chunks[j].fontSize = textSize;
+		}
+	}
+
+	_fullRefresh = true;
+	render();
+	_contentIsDirty = true;
+}
+
 void MacText::setTextColor(uint32 color, uint32 line) {
 	if (line >= _textLines.size()) {
 		warning("MacText::setTextColor(): line %d is out of bounds", line);
@@ -383,7 +395,24 @@ void MacText::getChunkPosFromIndex(int index, uint &lineNum, uint &chunkNum, uin
 	offset = 0;
 }
 
+void setTextColorCallback(MacFontRun &macFontRun, int color) {
+	macFontRun.fgcolor = color;
+}
+
 void MacText::setTextColor(uint32 color, uint32 start, uint32 end) {
+	uint col = _wm->findBestColor(color);
+	setTextChunks(start, end, col, setTextColorCallback);
+}
+
+void setTextSizeCallback(MacFontRun &macFontRun, int textSize) {
+	macFontRun.fontSize = textSize;
+}
+
+void MacText::setTextSize(int textSize, int start, int end) {
+	setTextChunks(start, end, textSize, setTextSizeCallback);
+}
+
+void MacText::setTextChunks(int start, int end, int param, void (*callback)(MacFontRun &, int)) {
 	if (_textLines.empty())
 		return;
 	if (start > end)
@@ -414,8 +443,6 @@ void MacText::setTextColor(uint32 color, uint32 start, uint32 end) {
 		endCol++;
 	}
 
-	uint col = _wm->findBestColor(color);
-	// after spliting, we are going to modify the colors now
 	for (uint i = startRow; i <= endRow; i++) {
 		uint from, to;
 		if (i == startRow && i == endRow) {
@@ -432,13 +459,61 @@ void MacText::setTextColor(uint32 color, uint32 start, uint32 end) {
 			to = _textLines[i].chunks.size();
 		}
 		for (uint j = from; j < to; j++) {
-			_textLines[i].chunks[j].fgcolor = col;
+			callback(_textLines[i].chunks[j], param);
 		}
 	}
 
 	_fullRefresh = true;
 	render();
 	_contentIsDirty = true;
+}
+
+void setTextFontCallback(MacFontRun &macFontRun, int fontId) {
+	macFontRun.fontId = fontId;
+}
+
+void MacText::setTextFont(int fontId, int start, int end) {
+	setTextChunks(start, end, fontId, setTextFontCallback);
+}
+
+void setTextSlantCallback(MacFontRun &macFontRun, int textSlant) {
+	macFontRun.textSlant = textSlant;
+}
+
+void MacText::setTextSlant(int textSlant, int start, int end) {
+	setTextChunks(start, end, textSlant, setTextSlantCallback);
+}
+
+// this maybe need to amend
+// currently, we just return the text size of first character.
+int MacText::getTextSize(int start, int end) {
+	return getTextChunks(start, end).fontSize;
+}
+
+uint MacText::getTextColor(int start, int end) {
+	return getTextChunks(start, end).fgcolor;
+}
+
+int MacText::getTextFont(int start, int end) {
+	return getTextChunks(start, end).fontId;
+}
+
+int MacText::getTextSlant(int start, int end) {
+	return getTextChunks(start, end).textSlant;
+}
+
+// only getting the first chunk for the selected area
+MacFontRun MacText::getTextChunks(int start, int end) {
+	if (_textLines.empty())
+		return _defaultFormatting;
+	if (start > end)
+		SWAP(start, end);
+
+	uint startRow, startCol;
+	uint offset;
+
+	getChunkPosFromIndex(start, startRow, startCol, offset);
+	return _textLines[startRow].chunks[startCol];
 }
 
 void MacText::setDefaultFormatting(uint16 fontId, byte textSlant, uint16 fontSize,
@@ -950,6 +1025,9 @@ int MacText::getLineHeight(int line) {
 void MacText::setInterLinear(int interLinear) {
 	_interLinear = interLinear;
 	recalcDims();
+	_fullRefresh = true;
+	render();
+	_contentIsDirty = true;
 }
 
 void MacText::recalcDims() {
@@ -1123,7 +1201,7 @@ void MacText::appendText_(const Common::U32String &strWithFont, uint oldLen) {
 	_contentIsDirty = true;
 
 	if (_editable) {
-		_scrollPos = MAX(0, getTextHeight() - getDimensions().height());
+		_scrollPos = MAX<int>(0, getTextHeight() - getDimensions().height());
 
 		_cursorRow = getLineCount();
 		_cursorCol = getLineCharWidth(_cursorRow);
@@ -1749,7 +1827,7 @@ void MacText::scroll(int delta) {
 	if (_editable)
 		_scrollPos = CLIP<int>(_scrollPos, 0, MacText::getTextHeight() - kConScrollStep);
 	else
-		_scrollPos = CLIP<int>(_scrollPos, 0, MAX(0, MacText::getTextHeight() - getDimensions().height()));
+		_scrollPos = CLIP<int>(_scrollPos, 0, MAX<int>(0, MacText::getTextHeight() - getDimensions().height()));
 
 	undrawCursor();
 	_cursorY -= (_scrollPos - oldScrollPos);

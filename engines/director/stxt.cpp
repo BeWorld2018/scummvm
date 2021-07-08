@@ -23,6 +23,7 @@
 #include "common/substream.h"
 
 #include "director/director.h"
+#include "director/cast.h"
 #include "director/stxt.h"
 
 namespace Director {
@@ -68,11 +69,15 @@ Stxt::Stxt(Cast *cast, Common::SeekableReadStreamEndian &textStream) : _cast(cas
 
 	while (formattingCount) {
 		debugC(3, kDebugText, "Stxt init: formattingCount: %u", formattingCount);
-		_style.read(textStream);
+		_style.read(textStream, _cast);
 
 		assert(prevPos <= _style.formatStartOffset);  // If this is triggered, we have to implement sorting
 
 		while (prevPos != _style.formatStartOffset) {
+			// We should theoretically handle the cross-platform character mappings stored in _cast->_charMap here.
+			// However, Director 4 seems to ignore these mappings despite storing them.
+			// Maybe they're handled in a later version?
+
 			char f = text.firstChar();
 			_ftext += text.firstChar();
 			text.deleteChar(0);
@@ -110,12 +115,12 @@ FontStyle::FontStyle() {
 	r = g = b = 0;
 }
 
-void FontStyle::read(Common::ReadStreamEndian &stream) {
+void FontStyle::read(Common::ReadStreamEndian &stream, Cast *cast) {
 	formatStartOffset = stream.readUint32();
-	height = stream.readUint16();
+	uint16 originalHeight = height = stream.readUint16();
 	ascent = stream.readUint16();
 
-	fontId = stream.readUint16();
+	uint16 originalFontId = fontId = stream.readUint16();
 	textSlant = stream.readByte();
 	stream.readByte(); // padding
 	fontSize = stream.readUint16();
@@ -124,8 +129,16 @@ void FontStyle::read(Common::ReadStreamEndian &stream) {
 	g = stream.readUint16();
 	b = stream.readUint16();
 
-	debugC(3, kDebugLoading, "FontStyle::read(): formatStartOffset: %d, height: %d ascent: %d, fontId: %d, textSlant: %d, fontSize: %d, r: %x g: %x b: %x",
-			formatStartOffset, height, ascent, fontId, textSlant, fontSize, r, g, b);
+	if (cast->_fontMap.contains(originalFontId)) {
+		FontInfo *info = cast->_fontMap[originalFontId];
+		fontId = info->toFont;
+		if (info->sizeMap.contains(originalHeight)) {
+			height = info->sizeMap[height];
+		}
+	}
+
+	debugC(3, kDebugLoading, "FontStyle::read(): formatStartOffset: %d, height: %d -> %d ascent: %d, fontId: %d -> %d, textSlant: %d, fontSize: %d, r: %x g: %x b: %x",
+			formatStartOffset, originalHeight, height, ascent, originalFontId, fontId, textSlant, fontSize, r, g, b);
 }
 
 } // End of namespace Director

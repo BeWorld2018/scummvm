@@ -81,8 +81,8 @@ const int           slowScrollSpeed = 6,
 
 const StaticTilePoint Nowhere = {(int16)minint16, (int16)minint16, (int16)minint16};
 
-const MetaTileID    NoMetaTile(nullID, nullID);
-const ActiveItemID  NoActiveItem(0, activeItemIndexNullID);
+const StaticMetaTileID NoMetaTile = {nullID, nullID};
+const StaticActiveItemID  NoActiveItem = {ActiveItemID::getVal(0, activeItemIndexNullID)};
 
 enum SurfaceType {
 	surfaceHoriz,               //  Level surface
@@ -184,7 +184,7 @@ uint16                  rippedRoofID;
 
 static StaticTilePoint  ripTableCoords = Nowhere;
 
-static RipTable         ripTableList[25];
+static RipTable         *ripTableList;
 
 WorldMapData            *mapList;           //  master map data array
 
@@ -194,9 +194,7 @@ byte                   **stateArray;        //  Array of active item instance
 CyclePtr                cycleList;          // list of tile cycling info
 
 //  Platform caching management
-const int           platformCacheSize = 256;
-
-PlatformCacheEntry  platformCache[platformCacheSize];
+PlatformCacheEntry  *platformCache;
 
 /* ===================================================================== *
    View state
@@ -204,12 +202,11 @@ PlatformCacheEntry  platformCache[platformCacheSize];
 
 int16               defaultScrollSpeed = slowScrollSpeed;
 
-Point32             tileScroll,             // current tile scroll pos
-//					backScroll,              // quantized scroll pos
-                    targetScroll;           // where scroll going to
-Point16             fineScroll;
+static StaticPoint32 tileScroll = {0, 0},             // current tile scroll pos
+                     targetScroll = {0, 0};           // where scroll going to
+StaticPoint16 fineScroll = {0, 0};
 
-TilePoint           viewCenter;             // coordinates of view on map
+StaticTilePoint viewCenter = {0, 0, 0};             // coordinates of view on map
 
 //  These two variables define which sectors overlap the view rect.
 
@@ -233,30 +230,6 @@ BankBits LoadedBanks;                // what banks are loaded?
 
 /* ===================================================================== *
    ActiveItemID member functions
- * ===================================================================== */
-
-#if DEBUG
-ActiveItemID::ActiveItemID(int16 m, int16 i) :
-	val((m << activeItemMapShift) | (i & activeItemIndexMask)) {
-	assert(m < 0x8);
-	assert((uint16)i <= activeItemIndexNullID);
-}
-
-void ActiveItemID::setMapNum(int16 m) {
-	assert(m < 0x8);
-	val &= ~activeItemMapMask;
-	val |= (m << activeItemMapShift);
-}
-
-void ActiveItemID::setIndexNum(int16 i) {
-	assert((uint16)i <= activeItemIndexNullID);
-	val &= ~activeItemIndexMask;
-	val |= i & activeItemIndexMask;
-}
-#endif
-
-/* ===================================================================== *
-   Finds the address of a tile associated with a TileID
  * ===================================================================== */
 
 //-----------------------------------------------------------------------
@@ -1591,6 +1564,13 @@ void initMaps(void) {
 		mapData->buildInstanceHash();
 	}
 
+	ripTableList = new RipTable[RipTable::kRipTableSize];
+	for (int k = 0; k < RipTable::kRipTableSize; ++k) {
+		ripTableList[k].metaID = NoMetaTile;
+		ripTableList[k].ripID = 0;
+		memset(ripTableList[k].zTable, 0, sizeof(ripTableList[k].zTable));
+	}
+
 	initPlatformCache();
 	initMapFeatures();
 }
@@ -1602,6 +1582,11 @@ void cleanupMaps(void) {
 	int16       i;
 
 	termMapFeatures();
+
+	delete[] ripTableList;
+
+	delete[] platformCache;
+
 	//  Iterate through each map, dumping the data
 	for (i = 0; i < worldCount; i++) {
 		WorldMapData    *mapData = &mapList[i];
@@ -1803,7 +1788,9 @@ void loadAutoMap(SaveFileReader &saveGame) {
 //	Initialize the platform cache
 
 void initPlatformCache(void) {
-	for (int i = 0; i < platformCacheSize; i++) {
+	platformCache = new PlatformCacheEntry[PlatformCacheEntry::kPlatformCacheSize];
+
+	for (int i = 0; i < PlatformCacheEntry::kPlatformCacheSize; i++) {
 		PlatformCacheEntry  *pce = &platformCache[i];
 
 		//  Fill up the LRU with empty platforms
@@ -2268,7 +2255,7 @@ Platform *MetaTile::fetchPlatform(int16 mapNum, int16 layer) {
 	} else if (plIndex & cacheFlag) {
 		plIndex &= ~cacheFlag;
 
-		assert(plIndex < platformCacheSize);
+		assert(plIndex < PlatformCacheEntry::kPlatformCacheSize);
 
 			//	Get the address of the pce from the cache
 		pce = &platformCache[plIndex];
@@ -2296,7 +2283,7 @@ Platform *MetaTile::fetchPlatform(int16 mapNum, int16 layer) {
 		pce = &platformCache[cacheIndex];
 
 		//  Compute the layer of this entry in the cache
-		assert(cacheIndex < platformCacheSize);
+		assert(cacheIndex < PlatformCacheEntry::kPlatformCacheSize);
 		assert(cacheIndex >= 0);
 
 		if (pce->metaID != NoMetaTile) {
@@ -2818,7 +2805,7 @@ void buildRipTables(void) {
 	int16       tableIndex;
 
 	//  bit array of available rip tables
-	uint8       tableAvail[(ARRAYSIZE(ripTableList) + 7) >> 3];
+	uint8       tableAvail[(RipTable::kRipTableSize + 7) >> 3];
 
 	memset(tableAvail, 0xFF, sizeof(tableAvail));
 
@@ -2852,7 +2839,7 @@ void buildRipTables(void) {
 
 		uint j;
 		//  Find available table
-		for (j = 0; j < ARRAYSIZE(ripTableList); j++) {
+		for (j = 0; j < RipTable::kRipTableSize; j++) {
 			if (tableAvail[j >> 3] & (1 << (j & 0x7)))
 				break;
 		}
@@ -3680,7 +3667,7 @@ SurfaceType pointOnTile(TileInfo            *ti,
 
 		//  Compute the mask which represents the subtile
 		sMask = calcSubTileMask(subTile.u, subTile.v);
-		yBound = abs(subTileRel.x >> 1);
+		yBound = ABS(subTileRel.x >> 1);
 
 		while (subTileRel.y >= 0
 		        && subTile.u < 4
@@ -3825,7 +3812,7 @@ SurfaceType pointOnTile(TileInfo            *ti,
 				sMask <<= kSubTileMaskUShift + kSubTileMaskVShift;
 				subTileRel.y -= kSubTileDY * 2;
 			}
-			yBound = abs(subTileRel.x >> 1);
+			yBound = ABS(subTileRel.x >> 1);
 
 			if (subTile.u >= 4 || subTile.v >= 4) {
 				//  No subtile was found, so lets move the pointer.
@@ -3839,10 +3826,10 @@ SurfaceType pointOnTile(TileInfo            *ti,
 					subTileRel.x = relPos.x -
 					               ((subTile.u - subTile.v) << kSubTileDXShift);
 					subTileRel.y = ti->attrs.terrainHeight + kSubTileDY * 2 -
-					               abs(subTileRel.x >> 1) - 1;
+					               ABS(subTileRel.x >> 1) - 1;
 
 					sMask = calcSubTileMask(subTile.u, subTile.v);
-					yBound = abs(subTileRel.x >> 1);
+					yBound = ABS(subTileRel.x >> 1);
 				} else {
 					//  If there were no raised subtiles checked, move the
 					//  pointer laterally to the nearest raised subtile.
@@ -3912,7 +3899,7 @@ testLeft:
 					if (raisedCol == -4) break;
 
 					//  compute the number of subtiles in column
-					int8 subsInCol = 4 - abs(raisedCol);
+					int8 subsInCol = 4 - ABS(raisedCol);
 					relPos.x = (raisedCol << kSubTileDXShift) + subTileRel.x;
 
 					if (raisedCol > 0) {
@@ -3938,7 +3925,7 @@ testLeft:
 					//  column
 					subTileRel.y = relPos.y - ((subTile.u + subTile.v) * kSubTileDY) - h;
 					sMask = calcSubTileMask(subTile.u, subTile.v);
-					yBound = abs(subTileRel.x >> 1);
+					yBound = ABS(subTileRel.x >> 1);
 				}
 			}
 		}
@@ -4135,7 +4122,7 @@ StaticTilePoint pickTile(Point32 pos,
 	mt = curMap->lookupMeta(mCoords);
 
 	//  While we are less than the pick altitude
-	while (relPos.y < zMax + kTileDX + kMaxStepHeight - abs(relPos.x >> 1)) {
+	while (relPos.y < zMax + kTileDX + kMaxStepHeight - ABS(relPos.x >> 1)) {
 		//  If there is a metatile on this spot
 		if (mt != nullptr) {
 			//  Iterate through all platforms
@@ -4168,7 +4155,7 @@ StaticTilePoint pickTile(Point32 pos,
 
 				//  Reject the tile if mouse position is below lower tile
 				//  boundary
-				if ((relPos.y - sti.surfaceHeight) < abs(relPos.x >> 1))
+				if ((relPos.y - sti.surfaceHeight) < ABS(relPos.x >> 1))
 					continue;
 
 				if (ti->attrs.height > 0) {
@@ -4358,7 +4345,7 @@ void loadTileCyclingStates(SaveFileReader &saveGame) {
 
 void cleanupTileCyclingStates(void) {
 	if (cycleList != nullptr) {
-		free(cycleList);
+		delete[] cycleList;
 		cycleList = nullptr;
 	}
 }
@@ -4518,7 +4505,7 @@ void updateMainDisplay(void) {
 
 	WorldMapData    *curMap = &mapList[currentMapNum];
 
-	Point32         scrollCenter,
+	StaticPoint32   scrollCenter,
 	                scrollDelta;
 	int32           scrollSpeed = defaultScrollSpeed,
 	                scrollDistance;
@@ -4538,8 +4525,8 @@ void updateMainDisplay(void) {
 	viewDiff = trackPos - lastViewLoc;
 	lastViewLoc = trackPos;
 
-	if (abs(viewDiff.u) > 8 * kPlatformWidth * kTileUVSize
-	        ||  abs(viewDiff.v) > 8 * kPlatformWidth * kTileUVSize)
+	if (ABS(viewDiff.u) > 8 * kPlatformWidth * kTileUVSize
+	        ||  ABS(viewDiff.v) > 8 * kPlatformWidth * kTileUVSize)
 		freeAllTileBanks();
 
 	//  Add current coordinates to map if they have mapping
@@ -4581,7 +4568,9 @@ void updateMainDisplay(void) {
 	//  Compute the center of the screen in (u,v) coords.
 	scrollCenter.x = tileScroll.x + kTileRectWidth  / 2;
 	scrollCenter.y = tileScroll.y + kTileRectHeight / 2;
-	viewCenter = XYToUV(scrollCenter);
+	viewCenter.set(XYToUV(scrollCenter).u,
+	               XYToUV(scrollCenter).v,
+	               0);
 
 	//  Compute the largest U/V rectangle which completely
 	//  encloses the view area, and convert to sector coords.
@@ -4704,25 +4693,25 @@ void markMetaAsVisited(const TilePoint &pt) {
  * ===================================================================== */
 
 int16 quickDistance(const Point16 &p) {
-	int16       ax = abs(p.x),
-	            ay = abs(p.y);
+	int16       ax = ABS(p.x),
+	            ay = ABS(p.y);
 
 	if (ax > ay) return ax + (ay >> 1);
 	else return ay + (ax >> 1);
 }
 
 int32 quickDistance(const Point32 &p) {
-	int32       ax = abs(p.x),
-	            ay = abs(p.y);
+	int32       ax = ABS(p.x),
+	            ay = ABS(p.y);
 
 	if (ax > ay) return ax + (ay >> 1);
 	else return ay + (ax >> 1);
 }
 
 int16 TilePoint::magnitude(void) {
-	int16       au = abs(u),
-	            av = abs(v),
-	            az = abs(z);
+	int16       au = ABS(u),
+	            av = ABS(v),
+	            az = ABS(z);
 
 	if (az > au && az > av) return az + ((au + av) >> 1);
 	if (au > av)            return au + ((az + av) >> 1);
@@ -4774,7 +4763,7 @@ uint16 lineDist(
 	else
 		dist = lineFar;
 
-	return abs(dist);
+	return ABS(dist);
 }
 
 } // end of namespace Saga2

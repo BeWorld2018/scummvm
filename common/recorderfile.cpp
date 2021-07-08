@@ -34,7 +34,10 @@
 
 namespace Common {
 
-PlaybackFile::PlaybackFile() : _tmpRecordFile(_tmpBuffer, kRecordBuffSize), _tmpPlaybackFile(_tmpBuffer, kRecordBuffSize) {
+PlaybackFile::PlaybackFile()
+	: _tmpBuffer(kRecordBuffSize)
+	, _tmpRecordFile(_tmpBuffer.data(), kRecordBuffSize)
+	, _tmpPlaybackFile(_tmpBuffer.data(), kRecordBuffSize) {
 	_readStream = NULL;
 	_writeStream = NULL;
 	_screenshotsFile = NULL;
@@ -44,7 +47,7 @@ PlaybackFile::PlaybackFile() : _tmpRecordFile(_tmpBuffer, kRecordBuffSize), _tmp
 	_headerDumped = false;
 	_recordCount = 0;
 	_eventsSize = 0;
-	memset(_tmpBuffer, 1, kRecordBuffSize);
+	memset(_tmpBuffer.data(), 1, kRecordBuffSize);
 
 	_playbackParseState = kFileStateCheckFormat;
 }
@@ -109,7 +112,6 @@ void PlaybackFile::close() {
 }
 
 bool PlaybackFile::parseHeader() {
-	PlaybackFileHeader result;
 	ChunkHeader nextChunk;
 	_playbackParseState = kFileStateCheckFormat;
 	if (!readChunkHeader(nextChunk)) {
@@ -317,9 +319,19 @@ bool PlaybackFile::readSaveRecord() {
 	return true;
 }
 
-
+bool PlaybackFile::hasNextEvent() const {
+	if (_readStream->err()) {
+		return false;
+	}
+	return !_readStream->eos();
+}
 
 RecorderEvent PlaybackFile::getNextEvent() {
+	if (!hasNextEvent()) {
+		debug(3, "end of recorder file reached.");
+		g_system->quit();
+	}
+
 	assert(_mode == kRead);
 	if (isEventsBufferEmpty()) {
 		PlaybackFile::ChunkHeader header;
@@ -367,6 +379,8 @@ void PlaybackFile::readEvent(RecorderEvent& event) {
 		event.type = (EventType)_tmpPlaybackFile.readUint32LE();
 		switch (event.type) {
 		case EVENT_KEYDOWN:
+			event.kbdRepeat = _tmpPlaybackFile.readByte();
+			// fallthrough
 		case EVENT_KEYUP:
 			event.time = _tmpPlaybackFile.readUint32LE();
 			event.kbd.keycode = (KeyCode)_tmpPlaybackFile.readSint32LE();
@@ -390,17 +404,32 @@ void PlaybackFile::readEvent(RecorderEvent& event) {
 			event.mouse.x = _tmpPlaybackFile.readSint16LE();
 			event.mouse.y = _tmpPlaybackFile.readSint16LE();
 			break;
+		case EVENT_CUSTOM_BACKEND_ACTION_START:
+		case EVENT_CUSTOM_BACKEND_ACTION_END:
+		case EVENT_CUSTOM_ENGINE_ACTION_START:
+		case EVENT_CUSTOM_ENGINE_ACTION_END:
+			event.time = _tmpPlaybackFile.readUint32LE();
+			event.customType = _tmpPlaybackFile.readUint32LE();
+			break;
+		case EVENT_JOYAXIS_MOTION:
+		case EVENT_JOYBUTTON_UP:
+		case EVENT_JOYBUTTON_DOWN:
+			event.time = _tmpPlaybackFile.readUint32LE();
+			event.joystick.axis = _tmpPlaybackFile.readByte();
+			event.joystick.button = _tmpPlaybackFile.readByte();
+			event.joystick.position = _tmpPlaybackFile.readSint16LE();
+			break;
 		default:
 			event.time = _tmpPlaybackFile.readUint32LE();
 			break;
 		}
 		break;
 	}
-	event.kbdRepeat = true;
+	debug(3, "read event of type: %i (time: %u, systemmillis: %u)", event.type, event.time, g_system->getMillis(true));
 }
 
 void PlaybackFile::readEventsToBuffer(uint32 size) {
-	_readStream->read(_tmpBuffer, size);
+	_readStream->read(_tmpBuffer.data(), size);
 	_tmpPlaybackFile.seek(0);
 	_eventsSize = size;
 }
@@ -423,7 +452,7 @@ void PlaybackFile::dumpRecordsToFile() {
 	}
 	_writeStream->writeUint32LE(kEventTag);
 	_writeStream->writeUint32LE(_tmpRecordFile.pos());
-	_writeStream->write(_tmpBuffer, _tmpRecordFile.pos());
+	_writeStream->write(_tmpBuffer.data(), _tmpRecordFile.pos());
 	_tmpRecordFile.seek(0);
 	_recordCount = 0;
 }
@@ -526,6 +555,8 @@ void PlaybackFile::writeEvent(const RecorderEvent &event) {
 		_tmpRecordFile.writeUint32LE((uint32)event.type);
 		switch(event.type) {
 		case EVENT_KEYDOWN:
+			_tmpRecordFile.writeByte(event.kbdRepeat);
+			// fallthrough
 		case EVENT_KEYUP:
 			_tmpRecordFile.writeUint32LE(event.time);
 			_tmpRecordFile.writeSint32LE(event.kbd.keycode);
@@ -549,6 +580,21 @@ void PlaybackFile::writeEvent(const RecorderEvent &event) {
 			_tmpRecordFile.writeSint16LE(event.mouse.x);
 			_tmpRecordFile.writeSint16LE(event.mouse.y);
 			break;
+		case EVENT_CUSTOM_BACKEND_ACTION_START:
+		case EVENT_CUSTOM_BACKEND_ACTION_END:
+		case EVENT_CUSTOM_ENGINE_ACTION_START:
+		case EVENT_CUSTOM_ENGINE_ACTION_END:
+			_tmpRecordFile.writeUint32LE(event.time);
+			_tmpRecordFile.writeUint32LE(event.customType);
+			break;
+		case EVENT_JOYAXIS_MOTION:
+		case EVENT_JOYBUTTON_UP:
+		case EVENT_JOYBUTTON_DOWN:
+			_tmpRecordFile.writeUint32LE(event.time);
+			_tmpRecordFile.writeByte(event.joystick.axis);
+			_tmpRecordFile.writeByte(event.joystick.button);
+			_tmpRecordFile.writeSint16LE(event.joystick.position);
+			break;
 		default:
 			_tmpRecordFile.writeUint32LE(event.time);
 			break;
@@ -558,6 +604,7 @@ void PlaybackFile::writeEvent(const RecorderEvent &event) {
 	if (_recordCount == kMaxBufferedRecords) {
 		dumpRecordsToFile();
 	}
+	debug(3, "write event of type: %i (time: %u, systemmillis: %u)", event.type, event.time, g_system->getMillis(true));
 }
 
 void PlaybackFile::writeGameSettings() {
@@ -644,8 +691,8 @@ void PlaybackFile::updateHeader() {
 	dumpHeaderToFile();
 	uint32 readedSize = 0;
 	do {
-		readedSize = _readStream->read(_tmpBuffer, kRecordBuffSize);
-		_writeStream->write(_tmpBuffer, readedSize);
+		readedSize = _readStream->read(_tmpBuffer.data(), kRecordBuffSize);
+		_writeStream->write(_tmpBuffer.data(), readedSize);
 	} while (readedSize != 0);
 	delete _writeStream;
 	_writeStream = NULL;

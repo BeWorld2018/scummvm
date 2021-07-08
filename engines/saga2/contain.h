@@ -31,7 +31,6 @@
 
 namespace Saga2 {
 
-//DNode
 //	gPanel
 //		gControl
 class ContainerView;
@@ -45,7 +44,6 @@ class EnchantContainerView;
 //				FloatingWindow
 class ContainerWindow;
 class ContainerNode;
-//DList
 class ContainerList;
 struct ContainerAppearanceDef;
 
@@ -389,7 +387,7 @@ struct ContainerAppearanceDef {
 
 //  REM: What about the ordering of windows?
 
-class ContainerNode : public DNode {
+class ContainerNode {
 
 	friend class    ContainerList;
 	friend class    ContainerView;
@@ -437,7 +435,14 @@ private:
 	};
 
 public:
-	ContainerNode(void) {}
+	ContainerNode(void) {
+		object = 0;
+		type = 0;
+		owner = 0;
+		window = nullptr;
+		action = 0;
+		mindType = 0;
+	}
 	ContainerNode(ContainerList &cl, ObjectID id, int type);
 	~ContainerNode();
 
@@ -498,21 +503,23 @@ public:
 
 //  A list of container nodes
 
-class ContainerList : public DList {
-
-	friend class ContainerNodeIterator;
-
+class ContainerList {
 public:
-	void add(ContainerNode &cn) {
-		addHead(cn);
+	Common::List<ContainerNode *> _list;
+
+	void add(ContainerNode *cn) {
+		_list.push_front(cn);
 	}
-	void remove(ContainerNode &cn) {
-		cn.remove();
+
+	void remove(ContainerNode *cn) {
+		_list.remove(cn);
 	}
-	void moveToFront(ContainerNode &cn) {
-		cn.remove();
+
+	void moveToFront(ContainerNode *cn) {
+		remove(cn);
 		add(cn);
 	}
+
 	ContainerNode *find(ObjectID id);
 	ContainerNode *find(ObjectID id, int16 type);
 
@@ -521,8 +528,6 @@ public:
 	void doDeferredActions(void);
 	void setUpdate(ObjectID id);
 };
-
-extern ContainerList    globalContainerList;
 
 ContainerNode *CreateContainerNode(ObjectID id, bool open = true, int16 mindType = 0);
 ContainerNode *CreateReadyContainerNode(PlayerActorID player);

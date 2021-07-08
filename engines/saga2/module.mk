@@ -5,8 +5,6 @@ MODULE_OBJS := \
 	arrowptr.o \
 	assign.o \
 	audio.o \
-	audiobuf.o \
-	audiores.o \
 	automap.o \
 	band.o \
 	beegee.o \
@@ -14,10 +12,8 @@ MODULE_OBJS := \
 	button.o \
 	calender.o \
 	contain.o \
-	detection.o \
 	display.o \
 	dispnode.o \
-	dlist.o \
 	document.o \
 	effects.o \
 	enchant.o \
@@ -46,7 +42,7 @@ MODULE_OBJS := \
 	motion.o \
 	mouseimg.o \
 	msgbox.o \
-	noise.o \
+	music.o \
 	objects.o \
 	objproto.o \
 	panel.o \

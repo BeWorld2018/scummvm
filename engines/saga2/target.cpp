@@ -89,6 +89,54 @@ void *constructTarget(void *mem, void *buf) {
 	return buf;
 }
 
+void readTarget(void *mem, Common::InSaveFile *in) {
+	int16 type = in->readSint16LE();
+
+	switch (type) {
+	case locationTarget:
+		new (mem) LocationTarget(in);
+		break;
+
+	case specificTileTarget:
+		new (mem) SpecificTileTarget(in);
+		break;
+
+	case tilePropertyTarget:
+		new (mem) TilePropertyTarget(in);
+		break;
+
+	case specificMetaTileTarget:
+		new (mem) SpecificMetaTileTarget(in);
+		break;
+
+	case metaTilePropertyTarget:
+		new (mem) MetaTilePropertyTarget(in);
+		break;
+
+	case specificObjectTarget:
+		new (mem)  SpecificObjectTarget(in);
+		break;
+
+	case objectPropertyTarget:
+		new (mem)  ObjectPropertyTarget(in);
+		break;
+
+	case specificActorTarget:
+		new (mem) SpecificActorTarget(in);
+		break;
+
+	case actorPropertyTarget:
+		new (mem) ActorPropertyTarget(in);
+		break;
+	}
+}
+
+void writeTarget(const Target *t, Common::OutSaveFile *out) {
+	out->writeSint16LE(t->getType());
+
+	t->write(out);
+}
+
 int32 targetArchiveSize(const Target *t) {
 	return sizeof(int16) + t->archiveSize();
 }
@@ -169,6 +217,13 @@ LocationTarget::LocationTarget(void **buf) {
 	*buf = &bufferPtr[1];
 }
 
+LocationTarget::LocationTarget(Common::SeekableReadStream *stream) {
+	debugC(5, kDebugSaveload, "...... LocationTarget");
+
+	//  Restore the targe location
+	loc.load(stream);
+}
+
 //----------------------------------------------------------------------
 //	Return the number of bytes needed to archive this object in
 //	a buffer
@@ -185,6 +240,11 @@ void *LocationTarget::archive(void *buf) const {
 	*((TilePoint *)buf) = loc;
 
 	return (TilePoint *)buf + 1;
+}
+
+void LocationTarget::write(Common::OutSaveFile *out) const {
+	//  Store the target location
+	loc.write(out);
 }
 
 //----------------------------------------------------------------------
@@ -363,6 +423,13 @@ SpecificTileTarget::SpecificTileTarget(void **buf) {
 	*buf = bufferPtr;
 }
 
+SpecificTileTarget::SpecificTileTarget(Common::SeekableReadStream *stream) {
+	debugC(5, kDebugSaveload, "...... SpecificTileTarget");
+
+	//  Restore the tile ID
+	tile = stream->readUint16LE();
+}
+
 //----------------------------------------------------------------------
 //	Return the number of bytes needed to archive this object in
 //	a buffer
@@ -379,6 +446,11 @@ void *SpecificTileTarget::archive(void *buf) const {
 	*((TileID *)buf) = tile;
 
 	return (TileID *)buf + 1;
+}
+
+void SpecificTileTarget::write(Common::OutSaveFile *out) const {
+	//  Store the tile ID
+	out->writeUint16LE(tile);
 }
 
 //----------------------------------------------------------------------
@@ -433,6 +505,13 @@ TilePropertyTarget::TilePropertyTarget(void **buf) {
 	*buf = &bufferPtr[1];
 }
 
+TilePropertyTarget::TilePropertyTarget(Common::SeekableReadStream *stream) {
+	debugC(5, kDebugSaveload, "...... TilePropertyTarget");
+
+	//  Restore the TilePropertyID
+	tileProp = stream->readSint16LE();
+}
+
 //----------------------------------------------------------------------
 //	Return the number of bytes needed to archive this object in
 //	a buffer
@@ -448,6 +527,10 @@ void *TilePropertyTarget::archive(void *buf) const {
 	*((TilePropertyID *)buf) = tileProp;
 
 	return (TilePropertyID *)buf + 1;
+}
+
+void TilePropertyTarget::write(Common::OutSaveFile *out) const {
+	out->writeSint16LE(tileProp);
 }
 
 //----------------------------------------------------------------------
@@ -612,6 +695,14 @@ SpecificMetaTileTarget::SpecificMetaTileTarget(void **buf) {
 	*buf = &bufferPtr[1];
 }
 
+SpecificMetaTileTarget::SpecificMetaTileTarget(Common::SeekableReadStream *stream) {
+	debugC(5, kDebugSaveload, "...... SpecificMetaTileTarget");
+
+	//  Restore the MetaTileID
+	meta.map = stream->readSint16LE();
+	meta.index = stream->readSint16LE();
+}
+
 //----------------------------------------------------------------------
 //	Return the number of bytes needed to archive this object in
 //	a buffer
@@ -631,6 +722,12 @@ void *SpecificMetaTileTarget::archive(void *buf) const {
 	bufferPtr->index = meta.index;
 
 	return &bufferPtr[1];
+}
+
+void SpecificMetaTileTarget::write(Common::OutSaveFile *out) const {
+	//  Store the MetaTileID
+	out->writeSint16LE(meta.map);
+	out->writeSint16LE(meta.index);
 }
 
 //----------------------------------------------------------------------
@@ -688,6 +785,13 @@ MetaTilePropertyTarget::MetaTilePropertyTarget(void **buf) {
 	*buf = &bufferPtr[1];
 }
 
+MetaTilePropertyTarget::MetaTilePropertyTarget(Common::SeekableReadStream *stream) {
+	debugC(5, kDebugSaveload, "...... MetaTilePropertyTarget");
+
+	//  Restore the MetaTilePropertyID
+	metaProp = stream->readSint16LE();
+}
+
 //----------------------------------------------------------------------
 //	Return the number of bytes needed to archive this object in
 //	a buffer
@@ -704,6 +808,11 @@ void *MetaTilePropertyTarget::archive(void *buf) const {
 	*((MetaTilePropertyID *)buf) = metaProp;
 
 	return (MetaTilePropertyID *)buf + 1;
+}
+
+void MetaTilePropertyTarget::write(Common::OutSaveFile *out) const {
+	//  Store the MetaTilePropertyID
+	out->writeSint16LE(metaProp);
 }
 
 //----------------------------------------------------------------------
@@ -973,6 +1082,13 @@ SpecificObjectTarget::SpecificObjectTarget(void **buf) {
 	*buf = &bufferPtr[1];
 }
 
+SpecificObjectTarget::SpecificObjectTarget(Common::SeekableReadStream *stream) {
+	debugC(5, kDebugSaveload, "...... SpecificObjectTarget");
+
+	//  Restore the ObjectID
+	obj = stream->readUint16LE();
+}
+
 //----------------------------------------------------------------------
 //	Return the number of bytes needed to archive this object in
 //	a buffer
@@ -989,6 +1105,11 @@ void *SpecificObjectTarget::archive(void *buf) const {
 	*((ObjectID *)buf) = obj;
 
 	return (ObjectID *)buf + 1;
+}
+
+void SpecificObjectTarget::write(Common::OutSaveFile *out) const {
+	//  Store the ObjectID
+	out->writeUint16LE(obj);
 }
 
 //----------------------------------------------------------------------
@@ -1134,6 +1255,13 @@ ObjectPropertyTarget::ObjectPropertyTarget(void **buf) {
 	*buf = &bufferPtr[1];
 }
 
+ObjectPropertyTarget::ObjectPropertyTarget(Common::SeekableReadStream *stream) {
+	debugC(5, kDebugSaveload, "...... ObjectPropertyTarget");
+
+	//  Restore the ObjectPropertyID
+	objProp = stream->readSint16LE();
+}
+
 //----------------------------------------------------------------------
 //	Return the number of bytes needed to archive this object in
 //	a buffer
@@ -1150,6 +1278,11 @@ void *ObjectPropertyTarget::archive(void *buf) const {
 	*((ObjectPropertyID *)buf) = objProp;
 
 	return (ObjectPropertyID *)buf + 1;
+}
+
+void ObjectPropertyTarget::write(Common::OutSaveFile *out) const {
+	//  Store the ObjectPropertyID
+	out->writeSint16LE(objProp);
 }
 
 //----------------------------------------------------------------------
@@ -1242,6 +1375,20 @@ SpecificActorTarget::SpecificActorTarget(void **buf) {
 	*buf = bufferPtr + 1;
 }
 
+SpecificActorTarget::SpecificActorTarget(Common::SeekableReadStream *stream) {
+	debugC(5, kDebugSaveload, "...... SpecificActorTarget");
+
+	ObjectID actorID;
+
+	//  Get the actor's ID
+	actorID = stream->readUint16LE();
+
+	//  Convert the actor ID into an Actor pointer
+	a = actorID != Nothing
+	    ? (Actor *)GameObject::objectAddress(actorID)
+	    :   NULL;
+}
+
 //----------------------------------------------------------------------
 //	Return the number of bytes needed to archive this object in
 //	a buffer
@@ -1261,6 +1408,14 @@ void *SpecificActorTarget::archive(void *buf) const {
 	*((ObjectID *)buf) = actorID;
 
 	return (ObjectID *)buf + 1;
+}
+
+void SpecificActorTarget::write(Common::OutSaveFile *out) const {
+	//  Convert the actor pointer to an actor ID;
+	ObjectID actorID = a != NULL ? a->thisID() : Nothing;
+
+	//  Store the actor ID
+	out->writeUint16LE(actorID);
 }
 
 //----------------------------------------------------------------------
@@ -1436,6 +1591,13 @@ ActorPropertyTarget::ActorPropertyTarget(void **buf) {
 	*buf = &bufferPtr[1];
 }
 
+ActorPropertyTarget::ActorPropertyTarget(Common::SeekableReadStream *stream) {
+	debugC(5, kDebugSaveload, "...... ActorPropertyTarget");
+
+	//  Restore the ActorPropertyID
+	actorProp = stream->readSint16LE();
+}
+
 //----------------------------------------------------------------------
 //	Return the number of bytes needed to archive this object in
 //	a buffer
@@ -1452,6 +1614,11 @@ void *ActorPropertyTarget::archive(void *buf) const {
 	*((ActorPropertyID *)buf) = actorProp;
 
 	return (ActorPropertyID *)buf + 1;
+}
+
+void ActorPropertyTarget::write(Common::OutSaveFile *out) const {
+	//  Store the ActorPropertyID
+	out->writeSint16LE(actorProp);
 }
 
 //----------------------------------------------------------------------

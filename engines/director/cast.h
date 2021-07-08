@@ -46,6 +46,26 @@ class ScriptCastMember;
 class ShapeCastMember;
 class TextCastMember;
 
+typedef Common::HashMap<byte, byte> CharMap;
+typedef Common::HashMap<uint16, uint16> FontSizeMap;
+struct FontXPlatformInfo {
+	Common::String toFont;
+	bool remapChars;
+	FontSizeMap sizeMap;
+
+	FontXPlatformInfo() : remapChars(false) {}
+};
+typedef Common::HashMap<Common::String, FontXPlatformInfo *> FontXPlatformMap;
+
+struct FontInfo {
+	uint16 toFont;
+	bool remapChars;
+	FontSizeMap sizeMap;
+
+	FontInfo() : toFont(0), remapChars(false) {}
+};
+typedef Common::HashMap<uint16, FontInfo *> FontMap;
+
 class Cast {
 public:
 	Cast(Movie *movie, uint16 castLibID, bool shared = false);
@@ -77,19 +97,25 @@ public:
 	Common::String getVideoPath(int castId);
 
 	void dumpScript(const char *script, ScriptType type, uint16 id);
+	PaletteV4 loadPalette(Common::SeekableReadStreamEndian &stream);
 
 private:
-	PaletteV4 loadPalette(Common::SeekableReadStreamEndian &stream);
 	void loadScriptText(Common::SeekableReadStreamEndian &stream, uint16 id);
 	void loadFontMap(Common::SeekableReadStreamEndian &stream);
+	void loadFontMapV4(Common::SeekableReadStreamEndian &stream);
+	void loadFXmp(Common::SeekableReadStreamEndian &stream);
+	bool readFXmpLine(Common::SeekableReadStreamEndian &stream);
 	Common::String getString(Common::String str);
 
 public:
 	Archive *_castArchive;
 	uint16 _version;
+	Common::Platform _platform;
 	uint16 _castLibID;
 
-	Common::HashMap<uint16, Common::String> _fontMap;
+	CharMap _charMap;
+	FontXPlatformMap _fontXPlatformMap;
+	FontMap _fontMap;
 
 	Common::HashMap<int, CastMember *> *_loadedCast;
 	Common::HashMap<int, const Stxt *> *_loadedStxts;

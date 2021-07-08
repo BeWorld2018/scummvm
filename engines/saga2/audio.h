@@ -29,54 +29,85 @@
 
 #include "audio/mixer.h"
 
-/* ===================================================================== *
-   the library(s) must be recompiled if you change these settings
- * ===================================================================== */
+namespace Saga2 {
 
-#define DEBUG_AUDIO     2
-#define STATUS_MESSAGES DEBUG
-#define QUEUES_EXTERNAL_ALLOCATION 1
-#define USE_REAL_WAIL 1
+class Music;
+class hResContext;
 
-// TODO: FIXME. STUB
-typedef int HDIGDRIVER;
-typedef int HTIMER;
-typedef int HMDIDRIVER;
-typedef int HSAMPLE;
-typedef int HSEQUENCE;
+typedef Point32 sampleLocation;
 
-// AIL stubs
-#define SMP_DONE          0x0002
-#define SMP_STOPPED       0x0008
+#define Here Point32(0,0)
 
-void  AIL_init_sample(HSAMPLE S);
-HSAMPLE AIL_allocate_sample_handle(HDIGDRIVER dig);
-void AIL_release_sample_handle(HSAMPLE S);
-HSEQUENCE AIL_allocate_sequence_handle(HMDIDRIVER mdi);
-void AIL_end_sample(HSAMPLE S);
-void AIL_set_sample_type(HSAMPLE S, int32 format, uint32 flags);
-uint32 AIL_sample_status(HSAMPLE S);
-void AIL_set_sample_address(HSAMPLE S, void *start, uint32 len);
-int32 AIL_sample_buffer_ready(HSAMPLE S);
-void AIL_end_sequence(HSEQUENCE S);
-void AIL_load_sample_buffer(HSAMPLE S, uint32 buff_num, void *buffer, uint32 len);
-void AIL_start_sample(HSAMPLE S);
-uint32 AIL_sequence_status(HSEQUENCE S);
-void AIL_set_sample_loop_count (HSAMPLE S, int32 loop_count);
-void AIL_set_sequence_loop_count(HSEQUENCE S, int32 loop_count);
-void  AIL_start_sequence(HSEQUENCE S);
-void AIL_set_sample_volume(HSAMPLE S, int32 volume);
-void AIL_set_sample_playback_rate(HSAMPLE S, int32 playback_rate);
-void AIL_lock(void);
-void AIL_unlock(void);
-void AIL_release_sequence_handle(HSEQUENCE S);
-int32 AIL_init_sequence(HSEQUENCE S, void *start, int32 sequence_num);
-int32 AIL_sample_volume(HSAMPLE S);
-int32 AIL_sequence_volume(HSEQUENCE S);
-void AIL_set_sequence_volume(HSEQUENCE S, int32 volume, int32 milliseconds);
+enum VolumeTarget {
+	kVolSfx,
+	kVolVoice,
+	kVolMusic
+};
 
-inline void audioFatal(char *msg) {
-	error("Sound error %s", msg);
-}
+struct SoundInstance {
+	soundSegment seg;
+	bool loop;
+	sampleLocation loc;
+};
+
+class audioInterface {
+private:
+	SoundInstance _currentSpeech;
+	SoundInstance _currentLoop;
+	SoundInstance _currentMusic;
+
+public:
+	Audio::SoundHandle _speechSoundHandle;
+	Audio::SoundHandle _sfxSoundHandle;
+	Audio::SoundHandle _bgmSoundHandle;
+	Audio::SoundHandle _clickSoundHandle;
+	Audio::SoundHandle _loopSoundHandle;
+
+	Common::List<SoundInstance> _speechQueue;
+	Common::Queue<SoundInstance> _sfxQueue;
+
+	Audio::Mixer *_mixer;
+	Music *_music;
+
+public:
+	// ctor, dtor, initialization
+	audioInterface();
+	~audioInterface();
+
+	// init, cleanup
+	void initAudioInterface(hResContext *musicContext);
+
+	// event loop calls
+	bool playFlag(void);
+	void playMe(void);
+
+	// music calls
+	void playMusic(soundSegment s, int16 loopFactor = 1, sampleLocation where = Here);
+	void stopMusic(void);
+
+	// sound calls
+	void queueSound(soundSegment s, int16 loopFactor = 1, sampleLocation where = Here);
+
+	// loop calls
+	void playLoop(soundSegment s, int16 loopFactor = 0, sampleLocation where = Here);
+	void stopLoop(void);
+	void setLoopPosition(sampleLocation newLoc);
+	soundSegment currentLoop(void) {
+		return _currentLoop.seg;
+	}
+
+	// voice calls
+	void queueVoice(soundSegment s, sampleLocation where = Here);
+	void queueVoice(soundSegment s[], sampleLocation where = Here);
+	void stopVoice(void);
+	bool talking(void);
+	bool saying(soundSegment s);
+
+	byte getVolume(VolumeTarget src);
+	void suspend(void);
+	void resume(void);
+};
+
+} // end of namespace Saga2
 
 #endif

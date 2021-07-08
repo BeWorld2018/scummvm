@@ -936,7 +936,7 @@ void Actor::receiveHitCru(uint16 other, Direction dir, int damage, uint16 damage
 		*/
 	}
 
-	if (isDead())
+	if (isDead() && (getShape() != 0x5d6 || GAME_IS_REMORSE))
 		return;
 
 	_lastTickWasHit = Kernel::get_instance()->getTickNum();
@@ -1378,6 +1378,7 @@ ProcId Actor::dieU8(uint16 damageType) {
 ProcId Actor::dieCru(uint16 damageType, uint16 damagePts, Direction srcDir) {
 	bool is_robot = isRobotCru();
 	bool created_koresh = false;
+	const uint32 startshape = getShape();
 
 	World *world = World::get_instance();
 
@@ -1394,7 +1395,13 @@ ProcId Actor::dieCru(uint16 damageType, uint16 damagePts, Direction srcDir) {
 	destroyContents();
 	giveTreasure();
 
-	if (damageType == 3 || damageType == 4 || damageType == 10 || damageType == 12) {
+	if (getShape() == 0x5d6 && GAME_IS_REGRET) {
+		// you only die twice.. (frozen person breaking into pieces)
+		if (!isBusy()) {
+			setShape(0x5ef);
+			setToStartOfAnim(Animation::fallBackwardsCru);
+		}
+	} else if (damageType == 3 || damageType == 4 || damageType == 10 || damageType == 12) {
 		if (!is_robot /* && violence enabled */) {
 			const FireType *ft = GameData::get_instance()->getFireType(damageType);
 			assert(ft);
@@ -1459,6 +1466,23 @@ ProcId Actor::dieCru(uint16 damageType, uint16 damagePts, Direction srcDir) {
 			setShape(0x59c);
 			setToStartOfAnim(Animation::fallBackwardsCru);
 		}
+	} else if ((damageType == 0x10) || (damageType == 0x12)) {
+		if (!is_robot) {
+			setShape(0x5d6);
+			setToStartOfAnim(Animation::fallBackwardsCru);
+		}
+	} else if (damageType == 0x11) {
+		if (!is_robot) {
+			setShape(0x62d);
+			setToStartOfAnim(Animation::fallBackwardsCru);
+		}
+	} else if (damageType == 0x14) {
+		if (!is_robot) {
+			if (true /*isViolenceEnabled()*/) {
+				setShape(0x278);
+				setToStartOfAnim(Animation::fallBackwardsCru);
+			}
+		}
 	} else if (damageType == 7 && _objId == 1) {
 		lastanim = doAnimAfter(Animation::electrocuted, dir_current, lastanim);
 	}
@@ -1466,6 +1490,27 @@ ProcId Actor::dieCru(uint16 damageType, uint16 damagePts, Direction srcDir) {
 	if (!created_koresh) {
 		bool fall_backwards = true;
 		bool fall_random_dir = false;
+
+		if (GAME_IS_REGRET) {
+			uint32 shape = getShape();
+			if (startshape == shape) {
+				if (shape == 0x5ff || shape == 0x5d7) {
+					setShape(0x606);
+					setToStartOfAnim(Animation::fallBackwardsCru);
+				} else if (shape == 0x625 || shape == 0x626) {
+					setShape(0x62e);
+					setToStartOfAnim(Animation::fallBackwardsCru);
+				} else if (shape == 0x5f0 || shape == 0x2c3) {
+					setShape(0x5d5);
+					setToStartOfAnim(Animation::fallBackwardsCru);
+				} else if (shape == 0x62f || shape == 0x630) {
+					setShape(0x631);
+					setToStartOfAnim(Animation::fallBackwardsCru);
+				}
+			}
+		}
+
+
 		Direction dirtest[9];
 		/* 0x383 == 899 (robot), 1423 = plasma death, 1430 = fire death skeleton */
 		if (getShape() != 899 && getShape() != 0x58f && getShape() != 0x596) {

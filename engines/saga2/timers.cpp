@@ -67,11 +67,31 @@ void saveTimer(SaveFileConstructor &saveGame) {
 	    sizeof(time));
 }
 
+void saveTimer(Common::OutSaveFile *out) {
+	debugC(2, kDebugSaveload, "Saving time");
+
+	int32 time = gameTime;
+
+	out->write("TIME", 4);
+	out->writeUint32LE(sizeof(time));
+	out->writeUint32LE(time);
+
+	debugC(3, kDebugSaveload, "... time = %d", time);
+}
+
 void loadTimer(SaveFileReader &saveGame) {
 	int32   time;
 
 	saveGame.read(&time, sizeof(time));
 	gameTime = time;
+}
+
+void loadTimer(Common::InSaveFile *in) {
+	debugC(2, kDebugSaveload, "Loading time");
+
+	gameTime = in->readUint32LE();
+
+	debugC(3, kDebugSaveload, "... time = %d", gameTime);
 }
 
 /* ====================================================================== *
@@ -262,11 +282,19 @@ void loadTimers(SaveFileReader &saveGame) {
 //	Cleanup the active Timers
 
 void cleanupTimers(void) {
-	for (Common::List<TimerList *>::iterator it = g_vm->_timerLists.begin(); it != g_vm->_timerLists.end(); ++it)
+	Common::List<TimerList *>::iterator timerListNextIt;
+	for (Common::List<TimerList *>::iterator it = g_vm->_timerLists.begin(); it != g_vm->_timerLists.end(); it = timerListNextIt) {
+		timerListNextIt = it;
+		timerListNextIt++;
 		delete *it;
+	}
 
-	for (Common::List<Timer *>::iterator it = g_vm->_timers.begin(); it != g_vm->_timers.end(); ++it)
+	Common::List<Timer *>::iterator timerNextIt;
+	for (Common::List<Timer *>::iterator it = g_vm->_timers.begin(); it != g_vm->_timers.end(); it = timerNextIt) {
+		timerNextIt = it;
+		timerNextIt++;
 		delete *it;
+	}
 }
 
 /* ===================================================================== *

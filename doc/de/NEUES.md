@@ -23,13 +23,14 @@ Programmcodes finden Sie auf Englisch unter:
    - Unterstützung für die spanische Version von Ringworld hinzugefügt.
    - Unterstützung für die spanische Version von Amazon: Guardians of Eden hinzugefügt.
    - Unterstützung für Nightlong: Union City Conspiracy hinzugefügt.
+   - Unterstützung für The Journeyman Project 2: Buried in Time hinzugefügt.
 
  Neue Portierungen:
    - Die Version für den Nintendo DS wurde zu großen Teilen neu geschrieben.
 
  Allgemein:
    - Die ScummVM-Benutzeroberfläche unterstützt nun UTF-32.
-   - Code der Roland MT-32-Emulation auf mt32emu 2.5.0 des Munt-Projekts aktualisiert.
+   - Code der Roland MT-32-Emulation auf mt32emu 2.5.1 des Munt-Projekts aktualisiert.
    - Unterstützung für die neue OAuth-Implementierung von Dropbox hinzugefügt.
    - Umfangreiche Verbesserungen an den unterstützten Grafik-Scalern vorgenommen.
    - Der Pfad zur ScummVM-Konfigurationsdatei wird nun in der GUI unter Optionen -> Pfade angezeigt.
@@ -105,8 +106,10 @@ Programmcodes finden Sie auf Englisch unter:
    - Die Darstellung von FM-TOWNS-Spielen kann nun auf eine Höhe von 200 Pixeln beschränkt werden, um eine
      Seitenverhältniskorrektur zu ermöglichen.
    - Audioprobleme in der PC-Engine-Version von Loom korrigiert.
-   - Unterstützung für hochauflösende Schriftarten und Cursor-Darstellungen in der Macintosh-Version von Loom hinzugefügt.
+   - Unterstützung für hochauflösende Schriftarten und Cursor-Darstellungen in der 16-Farben-Macintosh-Version von Loom hinzugefügt.
    - Unterstützung für die japanische Macintosh-Version von The Dig hinzugefügt.
+   - Teilweise Unterstützung für die hochauflösenden Schriftarten und den Mauszeiger in der 16-Farben-Macintosh-Version von Indiana Jones and the Last Crusade hinzugefügt.
+   - Fehlende Instrumente in der m64k-Mac-Version von Monkey Island 2 und Indiana Jones and the Fate of Atlantis korrigiert.
 
  Tinsel:
    - Unterstützung für die Rückkehr zur ScummVM-Benutzeroberfläche hinzugefügt.
@@ -142,6 +145,9 @@ Programmcodes finden Sie auf Englisch unter:
    - Unterstützung für die Cloud-Anbindung hinzugefügt.
    - Der nuked OPL Adlib-Treiber ist wieder aktiviert.
    - Unterstützung für den CAMD MIDI-Treiber hinzugefügt.
+
+ Windows-Portierung:
+   - Standardmäßig wird nun der OpenGL-Renderer verwendet, der eine deutlich verbesserte Unterstützung für HiDPI-Displays bietet.
 
 #### 2.2.0 "Interactive Fantasy" (27.09.2020)
 

@@ -18,141 +18,79 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- *
- * Based on the original sources
- *   Faery Tale II -- The Halls of the Dead
- *   (c) 1993-1996 The Wyrmkeep Entertainment Co.
  */
+
+// Music class
 
 #ifndef SAGA2_MUSIC_H
 #define SAGA2_MUSIC_H
 
+#include "audio/mididrv.h"
+#include "audio/midiplayer.h"
+#include "audio/midiparser.h"
+#include "audio/mixer.h"
+
 namespace Saga2 {
 
-const int16 NoEnemy = -1;
-const int16 MaxThemes = 16;
-const uint32 FarAway = 250;
-
-/* ===================================================================== *
-   Types
- * ===================================================================== */
-
-//-----------------------------------------------------------------------
-// Music selection brain
-
-class Deejay {
-private:
-	int     enemy;
-	bool    aggr;
-	bool    day;
-	bool    ugd;
-	bool    susp;
-
-	static int current;
-	static int currentID;
-
-public:
-	Deejay() {
-		enemy = -1;
-		aggr = false;
-		day = true;
-		susp = false;
-		ugd = false;
-	}
-	~Deejay() {}
-
-private:
-	void select(void);
-
-public:
-	void setEnemy(int16 enemyType = -1) {
-		enemy = enemyType;
-		select();
-	}
-	void setAggression(bool aggressive) {
-		aggr = aggressive;
-		select();
-	}
-	void setDaytime(bool daytime) {
-		day = daytime;
-		select();
-	}
-	void setSuspend(bool suspended) {
-		susp = suspended;
-		select();
-	}
-	void setWorld(bool underground) {
-		ugd = underground;
-		select();
-	}
+enum MusicFlags {
+	MUSIC_NORMAL = 0,
+	MUSIC_LOOP = 0x0001
 };
 
-//-----------------------------------------------------------------------
-// General environmental audio selection brain
+class MusicDriver : public Audio::MidiPlayer {
+public:
+	MusicDriver();
 
-typedef uint32 themeFrame;
-typedef uint16 ThemeID;
+	void play(byte *data, uint32 size, bool loop);
+	void pause() override;
+	void resume() override;
 
-inline ThemeID theme(themeFrame tf) {
-	return tf & 0x0000FFFF;
-}
+	bool isAdlib() const { return _driverType == MT_ADLIB; }
 
-inline TilePoint metaTileOffset(themeFrame tf) {
-	TilePoint tp = TilePoint(0, 0, 0);
-	tp.u = (tf & 0xFF000000) >> 24;
-	tp.v = (tf & 0x00FF0000) >> 16;
-	return tp;
-}
+	// FIXME
+	bool isPlaying() const { return _parser && _parser->isPlaying(); }
 
-inline TilePoint coordsInMetaTile(TilePoint tp) {
-	return TilePoint(tp.u % kPlatShift, tp.v % kPlatShift, 0);
-}
+	// MidiDriver_BASE interface implementation
+	void send(uint32 b) override;
+	void sendToChannel(byte channel, uint32 b) override;
+	void metaEvent(byte type, byte *data, uint16 length) override;
 
-
-
-
-struct AudioSurroundings {
-	int16 distance;
-	int16 counts[MaxThemes];
-	TilePoint avgDir[MaxThemes];
-
-	void clear(void) {
-		distance = FarAway;
-		for (int i = 0; i < MaxThemes; i++) {
-			counts[i] = 0;
-			avgDir[i] = TilePoint(0, 0, 0);
-		}
-	}
-
-	void addIn(int16 theme, TilePoint where) {
-		avgDir[theme] = (avgDir[theme] * counts[theme]) + where;
-		counts[theme]++;
-		avgDir[theme] = avgDir[theme] / counts[theme];
-	}
-
-	int16 strongest(void) {
-		int16 str = 0;
-		int16 cnt = 0;
-		for (int i = 1; i < MaxThemes; i++) {
-			if (counts[i] > cnt) {
-				str = i;
-				cnt = counts[i];
-			}
-		}
-		return str;
-	}
-
-	int16 relativeStrength(int16 theme) {
-		int16 rs = counts[theme];
-		for (int i = 1; i < MaxThemes; i++) {
-			if (i != theme)
-				rs -= counts[i];
-		}
-		return rs;
-	}
-
+protected:
+	MusicType _driverType;
+	bool _milesAudioMode;
 };
 
-} // end of namespace Saga2
+class Music {
+public:
+
+	Music(hResContext *musicRes, Audio::Mixer *mixer);
+	~Music();
+	bool isPlaying();
+
+	void play(uint32 resourceId, MusicFlags flags = MUSIC_NORMAL);
+	void pause();
+	void resume();
+	void stop();
+
+	void setVolume(int volume);
+	int getVolume() { return _currentVolume; }
+
+	bool isAdlib() const { return _player->isAdlib(); }
+
+private:
+	Audio::Mixer *_mixer;
+
+	MusicDriver *_player;
+	Audio::SoundHandle _musicHandle;
+	uint32 _trackNumber;
+
+	int _currentVolume;
+
+	hResContext *_musicContext;
+
+	byte *_currentMusicBuffer;
+};
+
+} // End of namespace Saga2
 
 #endif

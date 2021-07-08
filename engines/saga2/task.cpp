@@ -81,7 +81,7 @@ TilePoint computeRepulsionVector(
 		            repulsorDist;
 
 		repulsorDist =      repulsorVectorArray[i].quickHDistance()
-		                    +   abs(repulsorVectorArray[i].z);
+		                    +   ABS(repulsorVectorArray[i].z);
 		repulsorWeight =
 		    repulsorDist != 0
 		    ?   64 * 64 / (repulsorDist * repulsorDist)
@@ -165,8 +165,14 @@ TaskStackList::TaskStackList(void) {
 //	TaskStackList destructor
 
 TaskStackList::~TaskStackList(void) {
-	for (int i = 0; i < numTaskStacks; i++)
+	for (int i = 0; i < numTaskStacks; i++) {
+		if (_list[i] == nullptr)
+			continue;
+
+		_list[i]->actor->curTask = nullptr;
 		delete _list[i];
+		_list[i] = nullptr;
+	}
 }
 
 //----------------------------------------------------------------------
@@ -1347,7 +1353,7 @@ TaskResult GotoTask::update(void) {
 				        != (immediateDest.u >> kTileUVShift)
 				        || (motionTarget.v >> kTileUVShift)
 				        != (immediateDest.v >> kTileUVShift)
-				        ||  abs(motionTarget.z - immediateDest.z) > 16
+				        ||  ABS(motionTarget.z - immediateDest.z) > 16
 				        ||  runState != prevRunState)
 					actorMotion->changeTarget(
 					    immediateDest,
@@ -1478,7 +1484,7 @@ bool GotoLocationTask::run(void) {
 
 	return  runThreshold != maxuint8
 	        ? (targetLoc - actorLoc).quickHDistance() > runThreshold
-	        ||  abs(targetLoc.z - actorLoc.z) > runThreshold
+	        ||  ABS(targetLoc.z - actorLoc.z) > runThreshold
 	        :   false;
 }
 
@@ -1677,7 +1683,7 @@ bool GotoObjectTargetTask::lineOfSight(void) {
 			//  sight if the target has moved beyond a certain range from
 			//  the last location it was tested at.
 			if ((targetLoc - lastTestedLoc).quickHDistance() > 25
-			        ||  abs(targetLoc.z - lastTestedLoc.z) > 25) {
+			        ||  ABS(targetLoc.z - lastTestedLoc.z) > 25) {
 				if (a->canSenseSpecificObject(
 				            info,
 				            maxSenseRange,
@@ -4014,11 +4020,11 @@ bool BandTask::targetHasChanged(GotoTask *gotoTarget) {
 	int16               slop;
 
 	slop = ((currentTarget - actorLoc).quickHDistance()
-	        +   abs(currentTarget.z - actorLoc.z))
+	        +   ABS(currentTarget.z - actorLoc.z))
 	       /   2;
 
 	if ((currentTarget - oldTarget).quickHDistance()
-	        +   abs(currentTarget.z - oldTarget.z)
+	        +   ABS(currentTarget.z - oldTarget.z)
 	        >   slop)
 		gotoLocation->changeTarget(currentTarget);
 
@@ -4043,7 +4049,7 @@ bool BandTask::atTarget(void) {
 	TilePoint       actorLoc = stack->getActor()->getLocation();
 
 	if ((actorLoc - currentTarget).quickHDistance() > 6
-	        ||  abs(actorLoc.z - currentTarget.z) > kMaxStepHeight) {
+	        ||  ABS(actorLoc.z - currentTarget.z) > kMaxStepHeight) {
 		if (attend != NULL) {
 			attend->abortTask();
 			delete attend;
@@ -4380,7 +4386,7 @@ TaskResult FollowPatrolRouteTask::handleFollowPatrolRoute(void) {
 	        == (currentWayPoint.u >> kTileUVShift)
 	        && (actorLoc.v >> kTileUVShift)
 	        == (currentWayPoint.v >> kTileUVShift)
-	        &&  abs(actorLoc.z - currentWayPoint.z) <= kMaxStepHeight) {
+	        &&  ABS(actorLoc.z - currentWayPoint.z) <= kMaxStepHeight) {
 		//  Delete the gotoWayPoint task
 		if (gotoWayPoint != NULL) {
 			gotoWayPoint->abortTask();

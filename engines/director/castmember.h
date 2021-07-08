@@ -238,6 +238,11 @@ public:
 	Datum getChunkField(int field, int start, int end);
 	bool setChunkField(int field, int start, int end, const Datum &value);
 
+	int getTextHeight();
+
+	int getTextSize();
+	void setTextSize(int textSize);
+
 	SizeType _borderSize;
 	SizeType _gutterSize;
 	SizeType _boxShadow;
@@ -256,6 +261,7 @@ public:
 	uint16 _fgpalinfo1, _fgpalinfo2, _fgpalinfo3;
 	ButtonType _buttonType;
 	bool _editable;
+	int _lineSpacing;
 
 	Common::String _ftext;
 	Common::String _ptext;

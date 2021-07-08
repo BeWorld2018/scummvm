@@ -52,8 +52,10 @@ static void fChgMode(ArgArray args) {
 	} else
 		assert(0);
 
-	if (args.size() == 3)
-		setSymbol(args[2].u.sym, true);
+	if (args.size() == 3) {
+		Symbol *location = g_private->maps.lookupLocation(args[2].u.sym->name);
+		setSymbol(location, true);
+	}
 
 	// This is the only place where this should be used
 	if (g_private->_noStopSounds) {
@@ -638,8 +640,16 @@ static void fAMRadioClip(ArgArray args) {
 }
 
 static void fPoliceClip(ArgArray args) {
-	assert(args.size() <= 4);
+	assert(args.size() <= 4 || args.size() == 6);
 	fAddSound(args[0].u.str, "PoliceClip");
+	// In the original, the variable is updated when the clip is played, but here we just update
+	// the variable when the clip is added to play. The effect for the player, is mostly the same.
+	if (args.size() == 6) {
+		assert(args[4].type == NAME);
+		assert(args[5].type == NUM);
+		Symbol *flag = g_private->maps.lookupVariable(args[4].u.sym->name);
+		setSymbol(flag, args[5].u.val);
+	}
 }
 
 static void fPhoneClip(ArgArray args) {
@@ -649,13 +659,14 @@ static void fPhoneClip(ArgArray args) {
 	}
 	int i = args[2].u.val;
 	int j = args[3].u.val;
+	Symbol *flag = g_private->maps.lookupVariable(args[4].u.sym->name);
 
 	if (i == j)
-		fAddSound(args[0].u.str, "PhoneClip", args[4].u.sym, args[5].u.val);
+		fAddSound(args[0].u.str, "PhoneClip", flag, args[5].u.val);
 	else {
 		assert(i < j);
 		Common::String sound = g_private->getRandomPhoneClip(args[0].u.str, i, j);
-		fAddSound(sound, "PhoneClip", args[4].u.sym, args[5].u.val);
+		fAddSound(sound, "PhoneClip", flag, args[5].u.val);
 	}
 }
 
@@ -713,13 +724,16 @@ static void fSoundArea(ArgArray args) {
 }
 
 static void fSafeDigit(ArgArray args) {
-	debugC(1, kPrivateDebugScript, "WARNING: SafeDigit is not implemented");
+	assert(args[0].type == NUM);
+	assert(args[1].type == RECT);
+	debugC(1, kPrivateDebugScript, "SafeDigit(%d, ..)", args[0].u.val);
+	g_private->addSafeDigit(args[0].u.val, args[1].u.rect);
 }
 
 static void fAskSave(ArgArray args) {
 	// This is not needed, since scummvm will take care of this
 	debugC(1, kPrivateDebugScript, "WARNING: AskSave is partially implemented");
-	g_private->_nextSetting = args[0].u.str;
+	g_private->_nextSetting = *args[0].u.sym->name;
 }
 
 static void fTimer(ArgArray args) {

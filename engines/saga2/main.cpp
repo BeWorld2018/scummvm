@@ -530,6 +530,29 @@ Common::SeekableReadStream *loadResourceToStream(hResContext *con, uint32 id, co
 	return new Common::MemoryReadStream(buffer, size, DisposeAfterUse::YES);
 }
 
+void dumpResource(hResContext *con, uint32 id) {
+	int32 size = con->size(id);
+	if (size <= 0 || !con->seek(id)) {
+		error("dumpResource(): Error reading resource ID '%s'.", tag2str(id));
+	}
+
+	byte *buffer = (byte *)malloc(size);
+	con->read(buffer, size);
+	con->rest();
+
+	Common::DumpFile out;
+
+	Common::String path = Common::String::format("./dumps/mus%s.dat", tag2strP(id));
+
+	if (out.open(path, true)) {
+		out.write(buffer, size);
+		out.flush();
+		out.close();
+	}
+
+	free(buffer);
+}
+
 typedef hResource *pHResource;
 
 inline char drive(char *path) {
@@ -539,20 +562,17 @@ inline char drive(char *path) {
 //-----------------------------------------------------------------------
 //	Routine to initialize an arbitrary resource file
 
-static bool openResource(
-    pHResource &hr,      // resource to initialize
-    const char *defaultPath,   // backup path
-    const char *fileName,      // file name & extension
-    const char *description) {
-	if (hr) delete hr;
+static bool openResource(pHResource &hr, const char *fileName, const char *description) {
+	if (hr)
+		delete hr;
 	hr = NULL;
 
-	hr = new hResource(fileName, defaultPath, description);
+	hr = new hResource(fileName, description);
 
 	while (hr == NULL || !hr->_valid) {
 		if (hr) delete hr;
 		hr = NULL;
-		hr = new hResource(fileName, defaultPath, description);
+		hr = new hResource(fileName, description);
 	}
 
 	if (hr == NULL || !hr->_valid) {
@@ -568,21 +588,12 @@ static bool openResource(
 bool openResources(void) {
 
 	if (
-	    openResource(resFile, "..\\resfile\\",  IMAGE_RESFILE,
-	                 "Imagery resource file")      &&
-
-	    openResource(objResFile, "..\\resfile\\",  OBJECT_RESFILE,
-	                 "Object resource file")      &&
-
-	    openResource(auxResFile, "..\\resfile\\",  AUX_RESFILE,
-	                 "Data resource file")      &&
-
-	    openResource(scriptResFile, "..\\scripts\\",  SCRIPT_RESFILE,
-	                 "Script resource file")      &&
-	    openResource(voiceResFile, "..\\sound\\",    VOICE_RESFILE,
-	                 "Voice resource file")       &&
-	    openResource(soundResFile, "..\\sound\\",    SOUND_RESFILE,
-	                 "Sound resource file")) {
+	    openResource(resFile, IMAGE_RESFILE, "Imagery resource file") &&
+	    openResource(objResFile, OBJECT_RESFILE, "Object resource file") &&
+	    openResource(auxResFile, AUX_RESFILE, "Data resource file") &&
+	    openResource(scriptResFile, SCRIPT_RESFILE, "Script resource file") &&
+	    openResource(voiceResFile, VOICE_RESFILE, "Voice resource file") &&
+	    openResource(soundResFile, SOUND_RESFILE, "Sound resource file")) {
 		return true;
 	}
 	return false;
@@ -679,6 +690,35 @@ void saveGlobals(SaveFileConstructor &saveGame) {
 	    sizeof(archive));
 }
 
+void saveGlobals(Common::OutSaveFile *out) {
+	debugC(2, kDebugSaveload, "Saving globals");
+
+	out->write("GLOB", 4);
+	out->writeUint32LE(sizeof(GlobalsArchive));
+
+	out->writeUint32LE(objectIndex);
+	out->writeUint32LE(actorIndex);
+	out->writeByte(brotherBandingEnabled);
+	out->writeByte(centerActorIndicatorEnabled);
+	out->writeByte(interruptableMotionsPaused);
+	out->writeByte(objectStatesPaused);
+	out->writeByte(actorStatesPaused);
+	out->writeByte(actorTasksPaused);
+	out->writeByte(combatBehaviorEnabled);
+	out->writeByte(backgroundSimulationPaused);
+
+	debugC(3, kDebugSaveload, "... objectIndex = %d", objectIndex);
+	debugC(3, kDebugSaveload, "... actorIndex = %d", actorIndex);
+	debugC(3, kDebugSaveload, "... brotherBandingEnabled = %d", brotherBandingEnabled);
+	debugC(3, kDebugSaveload, "... centerActorIndicatorEnabled = %d", centerActorIndicatorEnabled);
+	debugC(3, kDebugSaveload, "... interruptableMotionsPaused = %d", interruptableMotionsPaused);
+	debugC(3, kDebugSaveload, "... objectStatesPaused = %d", objectStatesPaused);
+	debugC(3, kDebugSaveload, "... actorStatesPaused = %d", actorStatesPaused);
+	debugC(3, kDebugSaveload, "... actorTasksPaused = %d", actorTasksPaused);
+	debugC(3, kDebugSaveload, "... combatBehaviorEnabled = %d", combatBehaviorEnabled);
+	debugC(3, kDebugSaveload, "... backgroundSimulationPaused = %d", backgroundSimulationPaused);
+}
+
 //-----------------------------------------------------------------------
 //	Restore miscellaneouse globals from a save file
 
@@ -697,6 +737,32 @@ void loadGlobals(SaveFileReader &saveGame) {
 	actorTasksPaused            = archive.actorTasksPaused;
 	combatBehaviorEnabled       = archive.combatBehaviorEnabled;
 	backgroundSimulationPaused  = archive.backgroundSimulationPaused;
+}
+
+void loadGlobals(Common::InSaveFile *in) {
+	debugC(2, kDebugSaveload, "Loading globals");
+
+	objectIndex = in->readUint32LE();
+	actorIndex = in->readUint32LE();
+	brotherBandingEnabled = in->readByte();
+	centerActorIndicatorEnabled = in->readByte();
+	interruptableMotionsPaused = in->readByte();
+	objectStatesPaused = in->readByte();
+	actorStatesPaused = in->readByte();
+	actorTasksPaused = in->readByte();
+	combatBehaviorEnabled = in->readByte();
+	backgroundSimulationPaused = in->readByte();
+
+	debugC(3, kDebugSaveload, "... objectIndex = %d", objectIndex);
+	debugC(3, kDebugSaveload, "... actorIndex = %d", actorIndex);
+	debugC(3, kDebugSaveload, "... brotherBandingEnabled = %d", brotherBandingEnabled);
+	debugC(3, kDebugSaveload, "... centerActorIndicatorEnabled = %d", centerActorIndicatorEnabled);
+	debugC(3, kDebugSaveload, "... interruptableMotionsPaused = %d", interruptableMotionsPaused);
+	debugC(3, kDebugSaveload, "... objectStatesPaused = %d", objectStatesPaused);
+	debugC(3, kDebugSaveload, "... actorStatesPaused = %d", actorStatesPaused);
+	debugC(3, kDebugSaveload, "... actorTasksPaused = %d", actorTasksPaused);
+	debugC(3, kDebugSaveload, "... combatBehaviorEnabled = %d", combatBehaviorEnabled);
+	debugC(3, kDebugSaveload, "... backgroundSimulationPaused = %d", backgroundSimulationPaused);
 }
 
 /********************************************************************/

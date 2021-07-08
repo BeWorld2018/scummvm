@@ -72,14 +72,6 @@ struct ResourceGameObject {
 	uint16          objectFlags;
 	uint8           hitPoints;
 	uint16          misc;
-	union {
-		uint16      massCount;              // for mergeables, object count
-		uint16      textStringID;           // inscription for documents
-		uint16      enchantmentType;        // for enchantments
-		uint16      generatorFrequency;     // for encounter and mission generators
-	};
-
-	uint8           missileFacing;
 
 	ResourceGameObject(Common::SeekableReadStream *stream);
 };
@@ -124,7 +116,9 @@ struct ObjectData {
 
 void     initActors(void);
 void     saveActors(SaveFileConstructor &);
+void     saveActors(Common::OutSaveFile *out);
 void     loadActors(SaveFileReader &);
+void     loadActors(Common::InSaveFile *in);
 void     cleanupActors(void);
 class GameObject {
 
@@ -135,7 +129,9 @@ class GameObject {
 
 	friend void     initObjects(void);
 	friend void     saveObjects(SaveFileConstructor &);
+	friend void     saveObjects(Common::OutSaveFile *out);
 	friend void     loadObjects(SaveFileReader &);
+	friend void     loadObjects(Common::InSaveFile *in);
 	friend void     cleanupObjects(void);
 
 	friend void     buildDisplayList(void);
@@ -194,12 +190,18 @@ public:
 	//  Constructor -- reconstruct from archive buffer
 	GameObject(void **buf);
 
+	GameObject(Common::InSaveFile *in);
+
+	void read(Common::InSaveFile *in);
+
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void);
 
 	//  Archive the object in a buffer
 	void *archive(void *buf);
+
+	void write(Common::OutSaveFile *out);
 
 	//  returns the address of the object based on the ID, and this
 	//  includes accounting for actors.
@@ -747,6 +749,9 @@ public:
 
 	void activate(void);
 	void deactivate(void);
+
+	void write(Common::OutSaveFile *out);
+	void read(Common::InSaveFile *in);
 };
 
 /* ======================================================================= *
@@ -769,20 +774,24 @@ class GameWorld : public GameObject {
 	friend class    GameObject;
 	friend class    ObjectIterator;
 
+public:
 	TilePoint       size;                   // size of world in U/V coords
 	int16           sectorArraySize;        // size of sector array
 	Sector          *sectorArray;          // array of sectors
-public:
 	int16           mapNum;                 // map number for this world.
 
 	//  Default constructor
-	GameWorld(void) : sectorArray(NULL) {}
+	GameWorld(void) : sectorArraySize(0), sectorArray(nullptr), mapNum(0) {}
 
 	//  Initial constructor
 	GameWorld(int16 map);
 
 	//  Constructor -- reconstruct from archive buffer
 	GameWorld(void **buf);
+
+	GameWorld(Common::SeekableReadStream *stream);
+
+	~GameWorld();
 
 	int32 archiveSize(void);
 	void *archive(void *buf);
@@ -931,7 +940,8 @@ public:
 	    const TileRegion    &sectorRegion) :
 		searchWorld(world),
 		minSector(sectorRegion.min),
-		maxSector(sectorRegion.max) {
+		maxSector(sectorRegion.max),
+		_currentObject(nullptr) {
 		assert(searchWorld != NULL);
 		assert(isWorld(searchWorld));
 	}
@@ -1218,7 +1228,7 @@ class ActiveRegionObjectIterator : public ObjectIterator {
 
 public:
 	//  Constructor
-	ActiveRegionObjectIterator(void) : activeRegionIndex(-1) {}
+	ActiveRegionObjectIterator(void) : activeRegionIndex(-1), sectorBitMask(0), currentWorld(nullptr), _currentObject(nullptr) {}
 
 	//  Iteration functions
 	ObjectID first(GameObject **obj);
@@ -1277,8 +1287,7 @@ class RecursiveContainerIterator {
 public:
 	//  Constructor
 	RecursiveContainerIterator(GameObject *container) :
-		root(container->thisID()) {
-	}
+		root(container->thisID()), id(0) {}
 
 	//  Iteration functions
 	ObjectID first(GameObject **obj);
@@ -1411,9 +1420,11 @@ void initWorlds(void);
 
 //  Save worlds to the save file
 void saveWorlds(SaveFileConstructor &saveGame);
+void saveWorlds(Common::OutSaveFile *out);
 
 //  Load worlds from the save file
 void loadWorlds(SaveFileReader &saveGame);
+void loadWorlds(Common::InSaveFile *in);
 
 //  Cleanup game worlds
 void cleanupWorlds(void);
@@ -1423,9 +1434,11 @@ void initObjects(void);
 
 //  Save the objects to the save file
 void saveObjects(SaveFileConstructor &saveGame);
+void saveObjects(Common::OutSaveFile *out);
 
 //  Load the objects from the save file
 void loadObjects(SaveFileReader &saveGame);
+void loadObjects(Common::InSaveFile *in);
 
 //  Cleanup object list
 void cleanupObjects(void);

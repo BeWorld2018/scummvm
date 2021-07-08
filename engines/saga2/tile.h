@@ -751,6 +751,10 @@ struct PlatformCacheEntry {
 	                layerNum;               // index of this plat in mt.
 	MetaTileID      metaID;                 // pointer to parent metatile
 	Platform        pl;                     // actual platform data
+
+	enum {
+		kPlatformCacheSize = 256
+	};
 };
 
 /* ======================================================================= *
@@ -765,6 +769,10 @@ struct RipTable {
 	MetaTileID  metaID;
 	uint16      ripID;
 	int16       zTable[kPlatformWidth][kPlatformWidth];
+
+	enum {
+		kRipTableSize = 25
+	};
 
 	//  Constructor
 	RipTable(void) : metaID(NoMetaTile) {}
@@ -948,6 +956,9 @@ public:
 	TileIterator(int16 mapNum, const TileRegion &reg) :
 		metaIter(mapNum, reg),
 		region(reg) {
+			mt = nullptr;
+			platIndex = 0;
+			platform = nullptr;
 	}
 
 	TileInfo *first(TilePoint *loc, StandingTileInfo *stiResult = NULL);
@@ -958,7 +969,7 @@ public:
    Exports
  * ===================================================================== */
 
-extern TilePoint    viewCenter;             // coordinates of view on map
+extern StaticTilePoint viewCenter;             // coordinates of view on map
 
 //  These two variables define which sectors overlap the view rect.
 

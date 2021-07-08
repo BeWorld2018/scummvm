@@ -18,25 +18,25 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- *
- * Based on the original sources
- *   Faery Tale II -- The Halls of the Dead
- *   (c) 1993-1996 The Wyrmkeep Entertainment Co.
  */
 
-#ifndef SAGA2_AUDPROTO_H
-#define SAGA2_AUDPROTO_H
+#include "bladerunner/color.h"
 
-namespace Saga2 {
+namespace BladeRunner {
 
-// Prototypes
+// This array essentially stores the conversion from unsigned 5bit values to 8bit
+// ie. ((int)i * 255) / 31 (integer division), for i values 0 to 31	
+// Note that just using a multiplier 256/16 (= 8) will not properly
+// map the color, since eg. value 31 would be mapped to 248 instead of 255.
+const uint8 Color::map5BitsTo8Bits[] = {0, 8, 16, 24, 32, 41, 49, 57, 65, 74, 82, 90, 98, 106, 115, 123, 131, 139, 148, 156, 164, 172, 180, 189, 197, 205, 213, 222, 230, 238, 246, 255};
 
-int initAudio(void);
-int startAudio(void);
-HDIGDRIVER &digitalAudioDriver(void);
-void disableAudio(...);
-
-} // end of namespace Saga2
-
-#endif  //SAGA2_AUDPROTO_H
-
+uint8 Color::get8BitColorFrom5Bit(uint8 col5b) {
+	if (col5b > 31) {
+		// A value larger than 31 is invalid (never going to happen for 5bits)
+		// but still catch the case, since the parameter is 8bits
+		return 255;
+	}
+	return map5BitsTo8Bits[col5b];
+}
+	
+} // End of namespace BladeRunner

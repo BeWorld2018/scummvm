@@ -52,7 +52,6 @@ Sprite::Sprite(Frame *frame) {
 	_ink = kInkTypeCopy;
 	_trails = 0;
 
-	_matte = nullptr;
 	_cast = nullptr;
 
 	_thickness = 0;
@@ -72,7 +71,6 @@ Sprite::Sprite(Frame *frame) {
 }
 
 Sprite::~Sprite() {
-	delete _matte;
 }
 
 bool Sprite::isQDShape() {
@@ -116,86 +114,6 @@ bool Sprite::respondsToMouse() {
 bool Sprite::isActive() {
 	return _movie->getScriptContext(kScoreScript, _scriptId) != nullptr
 			|| _movie->getScriptContext(kCastScript, _castId) != nullptr;
-}
-
-void Sprite::createQDMatte() {
-	Graphics::ManagedSurface tmp;
-	tmp.create(_width, _height, g_director->_pixelformat);
-	tmp.clear(g_director->_wm->_colorWhite);
-
-	MacShape *ms = new MacShape();
-
-	ms->ink = _ink;
-	ms->spriteType = _spriteType;
-	ms->foreColor = _foreColor;
-	ms->backColor = _backColor;
-	ms->lineSize = _thickness & 0x3;
-	ms->pattern = getPattern();
-
-	Common::Rect srcRect(_width, _height);
-
-	Common::Rect fillAreaRect((int)srcRect.width(), (int)srcRect.height());
-	Graphics::MacPlotData plotFill(&tmp, nullptr, &g_director->getPatterns(), ms->pattern, 0, 0, 1, ms->backColor);
-
-	Common::Rect strokeRect(MAX((int)srcRect.width() - ms->lineSize, 0), MAX((int)srcRect.height() - ms->lineSize, 0));
-	Graphics::MacPlotData plotStroke(&tmp, nullptr, &g_director->getPatterns(), 1, 0, 0, ms->lineSize, ms->backColor);
-
-	switch (_spriteType) {
-	case kRectangleSprite:
-		Graphics::drawFilledRect(fillAreaRect, g_director->_wm->_colorBlack, g_director->_wm->getDrawPixel(), &plotFill);
-		// fall through
-	case kOutlinedRectangleSprite:
-		Graphics::drawRect(strokeRect, g_director->_wm->_colorBlack, g_director->_wm->getDrawPixel(), &plotStroke);
-		break;
-	case kRoundedRectangleSprite:
-		Graphics::drawRoundRect(fillAreaRect, 12, g_director->_wm->_colorBlack, true, g_director->_wm->getDrawPixel(), &plotFill);
-		// fall through
-	case kOutlinedRoundedRectangleSprite:
-		Graphics::drawRoundRect(strokeRect, 12, g_director->_wm->_colorBlack, false, g_director->_wm->getDrawPixel(), &plotStroke);
-		break;
-	case kOvalSprite:
-		Graphics::drawEllipse(fillAreaRect.left, fillAreaRect.top, fillAreaRect.right, fillAreaRect.bottom, g_director->_wm->_colorBlack, true, g_director->_wm->getDrawPixel(), &plotFill);
-		// fall through
-	case kOutlinedOvalSprite:
-		Graphics::drawEllipse(strokeRect.left, strokeRect.top, strokeRect.right, strokeRect.bottom, g_director->_wm->_colorBlack, false, g_director->_wm->getDrawPixel(), &plotStroke);
-		break;
-	case kLineTopBottomSprite:
-		Graphics::drawLine(strokeRect.left, strokeRect.top, strokeRect.right, strokeRect.bottom, g_director->_wm->_colorBlack, g_director->_wm->getDrawPixel(), &plotStroke);
-		break;
-	case kLineBottomTopSprite:
-		Graphics::drawLine(strokeRect.left, strokeRect.bottom, strokeRect.right, strokeRect.top, g_director->_wm->_colorBlack, g_director->_wm->getDrawPixel(), &plotStroke);
-		break;
-	default:
-		warning("Sprite:createQDMatte Expected shape type but got type %d", _spriteType);
-	}
-
-	Graphics::Surface managedSurface;
-	managedSurface.create(_width, _height, g_director->_pixelformat);
-	managedSurface.copyFrom(tmp);
-
-	_matte = new Graphics::FloodFill(&managedSurface, g_director->_wm->_colorWhite, 0, true);
-
-	for (int yy = 0; yy < managedSurface.h; yy++) {
-		_matte->addSeed(0, yy);
-		_matte->addSeed(managedSurface.w - 1, yy);
-	}
-
-	for (int xx = 0; xx < managedSurface.w; xx++) {
-		_matte->addSeed(xx, 0);
-		_matte->addSeed(xx, managedSurface.h - 1);
-	}
-
-	_matte->fillMask();
-	tmp.free();
-	managedSurface.free();
-}
-
-Graphics::Surface *Sprite::getQDMatte() {
-	if (!isQDShape() || _ink != kInkTypeMatte)
-		return nullptr;
-	if (!_matte)
-		createQDMatte();
-	return _matte ? _matte->getMask() : nullptr;
 }
 
 bool Sprite::shouldHilite() {
@@ -272,7 +190,7 @@ void Sprite::setCast(CastMemberID memberID) {
 		_cast = member;
 
 		if (_cast->_type == kCastText &&
-				(_spriteType == kButtonSprite ||
+			(_spriteType == kButtonSprite ||
 				 _spriteType == kCheckboxSprite ||
 				 _spriteType == kRadioButtonSprite)) {
 			// WORKAROUND: In D2/D3 there can be text casts that have button
@@ -285,8 +203,14 @@ void Sprite::setCast(CastMemberID memberID) {
 
 		// TODO: Respect sprite width/height settings. Need to determine how to read
 		// them properly.
-		if (_cast->_type != kCastShape && _cast->_type != kCastText) {
-			Common::Rect dims = _cast->getInitialRect();
+		Common::Rect dims = _cast->getInitialRect();
+		// strange logic here, need to be fixed
+		if (_cast->_type == kCastBitmap) {
+			if (!(_inkData & 0x80)) {
+				_width = dims.width();
+				_height = dims.height();
+			}
+		} else if (_cast->_type != kCastShape && _cast->_type != kCastText) {
 			_width = dims.width();
 			_height = dims.height();
 		}

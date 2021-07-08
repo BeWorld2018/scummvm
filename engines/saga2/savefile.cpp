@@ -31,6 +31,25 @@
 
 namespace Saga2 {
 
+void SaveFileHeader::read(Common::InSaveFile *in) {
+	char fileName[SaveFileHeader::kSaveNameSize];
+	gameID = in->readUint32BE();;
+	in->read(fileName, SaveFileHeader::kSaveNameSize);
+	saveName = fileName;
+}
+
+void SaveFileHeader::write(Common::OutSaveFile *out) {
+	out->writeUint32BE(gameID);
+	out->write(saveName.c_str(), saveName.size());
+
+	int remainingBytes = SaveFileHeader::kHeaderSize - saveName.size() - 4;
+
+	for (int i = 0; i < remainingBytes; ++i)
+		out->writeByte(0);
+
+	debugC(1, kDebugSaveload, "Writing game header: gameID = %s, saveName = %s", tag2str(gameID), saveName.c_str());
+}
+
 /* ===================================================================== *
    Functions
  * ===================================================================== */
@@ -43,6 +62,10 @@ void getSaveFileName(int16 saveNo, char *fileName) {
 	sprintf(fileName, "%3.3d.SAV", saveNo);
 }
 
+Common::String getSaveFileName(int16 saveNo) {
+	return Common::String::format("%3.3d.SAV", saveNo);
+}
+
 /* ===================================================================== *
    SaveFileConstructor member functions
  * ===================================================================== */
@@ -51,6 +74,9 @@ void getSaveFileName(int16 saveNo, char *fileName) {
 //	Constructor
 
 SaveFileConstructor::SaveFileConstructor(int16 saveNo, char *saveName) {
+	warning("STUB: SaveFileConstructor::SaveFileConstructor");
+
+#if 0
 	char    fileName[fileNameSize];
 
 	//  Construct the file name string
@@ -66,13 +92,14 @@ SaveFileConstructor::SaveFileConstructor(int16 saveNo, char *saveName) {
 	memset(&header, '\0', sizeof(header));
 
 	header.gameID = gameID;
-	strncpy(header.saveName, saveName, sizeof(header.saveName) - 1);
+	Common::strlcpy(header.saveName, saveName, sizeof(header.saveName));
 
 	//  Write the header
 	if (fwrite(&header, sizeof(header), 1, fileHandle) != 1)
 		error("Error writing save game header: \"%s\"", fileName);
 
 	chunkSize = posInChunk = 0;
+#endif
 }
 
 //----------------------------------------------------------------------
@@ -219,6 +246,23 @@ bool SaveFileReader::firstChunk(ChunkID &chunk, int32 &size) {
 	return true;
 }
 
+bool firstChunk(Common::InSaveFile *in, ChunkID &chunk, int32 &size) {
+	if (!in->seek(SaveFileHeader::kHeaderSize, SEEK_SET))
+		error("Error seeking first save game chunk");
+
+	if (in->size() - in->pos() < 8) {
+		debugC(1, kDebugSaveload, "Reached EOF on first Chunk %s", tag2str(chunk));
+		return false;
+	}
+
+	chunk = in->readUint32BE();
+	size = in->readUint32LE();
+
+	debugC(1, kDebugSaveload, "First Chunk loaded: chunkID = %s, size = %d", tag2str(chunk), size);
+
+	return true;
+}
+
 //----------------------------------------------------------------------
 //	Make the next chunk the current chunk
 
@@ -245,6 +289,21 @@ bool SaveFileReader::nextChunk(ChunkID &chunk, int32 &size) {
 	//  Return the chunk ID and chunk size
 	chunk = chunkHeader.id;
 	size = chunkHeader.size;
+
+	//  Return success
+	return true;
+}
+
+bool nextChunk(Common::InSaveFile *in, ChunkID &chunk, int32 &size) {
+	if (in->size() - in->pos() < 8) {
+		debugC(1, kDebugSaveload, "Reached EOF at %s", tag2str(chunk));
+		return false;
+	}
+
+	chunk = in->readUint32BE();
+	size = in->readUint32LE();
+
+	debugC(1, kDebugSaveload, "Next Chunk loaded: chunkID = %s, size = %d", tag2str(chunk), size);
 
 	//  Return success
 	return true;

@@ -20,8 +20,8 @@
  *
  */
 
-#ifndef ULTIMA8_GUMPS_REMORSECREDITSGUMP_H
-#define ULTIMA8_GUMPS_REMORSECREDITSGUMP_H
+#ifndef ULTIMA8_GUMPS_CRUCREDITSGUMP_H
+#define ULTIMA8_GUMPS_CRUCREDITSGUMP_H
 
 #include "ultima/ultima8/gumps/modal_gump.h"
 #include "ultima/ultima8/misc/classtype.h"
@@ -34,14 +34,14 @@ class RenderedText;
 /**
  * Full-screen gump for the credits roll in Crusader: No Remorse
  */
-class RemorseCreditsGump : public ModalGump {
+class CruCreditsGump : public ModalGump {
 public:
 	ENABLE_RUNTIME_CLASSTYPE()
 
-	RemorseCreditsGump();
-	RemorseCreditsGump(Common::SeekableReadStream *txtrs, Common::SeekableReadStream *bmprs,
+	CruCreditsGump();
+	CruCreditsGump(Common::SeekableReadStream *txtrs, Common::SeekableReadStream *bmprs,
 	            uint32 flags = FLAG_PREVENT_SAVE, int32 layer = LAYER_MODAL);
-	~RemorseCreditsGump() override;
+	~CruCreditsGump() override;
 
 	// Init the gump, call after construction
 	void InitGump(Gump *newparent, bool take_focus = true) override;

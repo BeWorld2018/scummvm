@@ -75,7 +75,7 @@ int16               objectProtoCount,       // object prototype count
                     actorProtoCount;        // actor prototype count
 
 GameObject          *objectList = nullptr;     // list of all objects
-int16               objectCount;            // count of objects
+const int16         objectCount = 4971;        // count of objects
 
 Actor               *actorList = nullptr;      // list of all actors
 int16               actorCount;
@@ -136,7 +136,7 @@ bool                massAndBulkCount;
  * ===================================================================== */
 
 extern BackWindow   *mainWindow;
-extern Point16      fineScroll;             // current scroll pos
+extern StaticPoint16 fineScroll;             // current scroll pos
 extern hResContext  *imageRes;              // image resource handle
 extern PlayerActor  playerList[];   //  Master list of all PlayerActors
 extern SpellStuff   spellBook[];
@@ -266,6 +266,40 @@ GameObject::GameObject(void **buf) {
 	*buf = &a[1];
 }
 
+GameObject::GameObject(Common::InSaveFile *in) {
+	debugC(3, kDebugSaveload, "Loading object %d", thisID());
+
+	read(in);
+}
+
+void GameObject::read(Common::InSaveFile *in) {
+	debugC(3, kDebugSaveload, "Loading object %d", thisID());
+
+	int16 pInd = in->readSint16LE();
+	//  Convert the protoype index into an object proto pointer
+	prototype = pInd != -1
+	            ?   &objectProtos[pInd]
+	            :   nullptr;
+
+	_data.projectDummy = 0;
+	_data.location.load(in);
+	_data.nameIndex = in->readUint16LE();
+	_data.parentID = in->readUint16LE();
+	_data.siblingID = in->readUint16LE();
+	_data.childID = in->readUint16LE();
+	_data.script = in->readUint16LE();
+	_data.objectFlags = in->readUint16LE();
+	_data.hitPoints = in->readByte();
+	_data.bParam = in->readByte();
+	_data.massCount = in->readUint16LE();
+	_data.missileFacing = in->readByte();
+	_data.currentTAG.val = in->readSint16LE();
+	_data.sightCtr = in->readByte();
+	memset(&_data.reserved, 0, sizeof(_data.reserved));
+
+	_data.obj = this;
+}
+
 //-----------------------------------------------------------------------
 //	Return the number of bytes need to archive this object in an archive
 //	buffer.
@@ -298,6 +332,43 @@ void *GameObject::archive(void *buf) {
 	a->sightCtr     = _data.sightCtr;
 
 	return &a[1];
+}
+
+void GameObject::write(Common::OutSaveFile *out) {
+	debugC(2, kDebugSaveload, "Saving object %d", thisID());
+
+	warning("STUB: GameObject::write: Pointer arithmetic");
+	int16 pInd = prototype != nullptr ? prototype - objectProtos : -1;
+	out->writeSint16LE(pInd);
+	_data.location.write(out);
+	out->writeUint16LE(_data.nameIndex);
+	out->writeUint16LE(_data.parentID);
+	out->writeUint16LE(_data.siblingID);
+	out->writeUint16LE(_data.childID);
+	out->writeUint16LE(_data.script);
+	out->writeUint16LE(_data.objectFlags);
+	out->writeByte(_data.hitPoints);
+	out->writeByte(_data.bParam);
+	out->writeUint16LE(_data.massCount);
+	out->writeByte(_data.missileFacing);
+	out->writeSint16LE(_data.currentTAG);
+	out->writeByte(_data.sightCtr);
+
+	debugC(4, kDebugSaveload, "... protoIndex = %d", pInd);
+	debugC(4, kDebugSaveload, "... _data.location = (%d, %d, %d)",
+	       _data.location.u, _data.location.v, _data.location.z);
+	debugC(4, kDebugSaveload, "... _data.nameIndex = %d", _data.nameIndex);
+	debugC(4, kDebugSaveload, "... _data.parentID = %d", _data.parentID);
+	debugC(4, kDebugSaveload, "... _data.siblingID = %d", _data.siblingID);
+	debugC(4, kDebugSaveload, "... _data.childID = %d", _data.childID);
+	debugC(4, kDebugSaveload, "... _data.script = %d", _data.script);
+	debugC(4, kDebugSaveload, "... _data.objectFlags = %d", _data.objectFlags);
+	debugC(4, kDebugSaveload, "... _data.hitPoints = %d", _data.hitPoints);
+	debugC(4, kDebugSaveload, "... _data.bParam = %d", _data.bParam);
+	debugC(4, kDebugSaveload, "... _data.massCount = %d", _data.massCount);
+	debugC(4, kDebugSaveload, "... _data.missileFacing = %d", _data.missileFacing);
+	debugC(4, kDebugSaveload, "... _data.currentTAG.val = %d", _data.currentTAG.val);
+	debugC(4, kDebugSaveload, "... _data.sightCtr = %d", _data.sightCtr);
 }
 
 //  Same as above but use object addresses instead of ID's
@@ -933,7 +1004,7 @@ void GameObject::updateImage(ObjectID oldParentID) {
 	        &&  isPlayerActor((Actor *)oldParent))
 	        || (isObject(oldParentID)
 	            &&  oldParent->isOpen())) {
-		globalContainerList.setUpdate(oldParentID);
+		g_vm->_containerList->setUpdate(oldParentID);
 	}
 
 	if (_data.parentID != oldParentID && isActor(oldParentID)) {
@@ -982,7 +1053,7 @@ void GameObject::updateImage(ObjectID oldParentID) {
 		        &&  isPlayerActor((Actor *)parent))
 		        || (isObject(_data.parentID) && parent->isOpen())
 		   ) {
-			globalContainerList.setUpdate(_data.parentID);
+			g_vm->_containerList->setUpdate(_data.parentID);
 		}
 	}
 }
@@ -1114,16 +1185,11 @@ ObjectID GameObject::copy(const Location &l) {
 
 ObjectID GameObject::copy(const Location &l, int16 num) {
 	GameObject      *newObj;
-//	ObjectID        id = thisID();
 
 	if (isWorld(this))
 		error("World copying not allowed.");
 
 	if (isActor(this)) {
-//      newObj = newActor();
-//      newObj->move( l );
-		// REM: Call actor copy function...
-
 		error("Actor copying not yet implemented.");
 	} else {
 		if ((newObj = newObject()) == nullptr) return Nothing;
@@ -1134,7 +1200,6 @@ ObjectID GameObject::copy(const Location &l, int16 num) {
 		newObj->_data.script      = _data.script;
 		newObj->_data.objectFlags = _data.objectFlags;
 		newObj->_data.hitPoints   = _data.hitPoints;
-		newObj->_data.massCount   = _data.massCount;
 		newObj->_data.massCount   = num;
 
 		// this did occur before any of the assignments
@@ -1229,7 +1294,7 @@ void GameObject::deleteObject(void) {
 	removeAllSensors();
 
 	//  Delete any container nodes for this object
-	while ((cn = globalContainerList.find(dObj)) != nullptr)
+	while ((cn = g_vm->_containerList->find(dObj)) != nullptr)
 		delete cn;
 
 	if (isActor(_data.parentID)) {
@@ -1640,7 +1705,7 @@ void GameObject::dropInventoryObject(GameObject *obj, int16 count) {
 		Direction   startDir,
 		            dir;
 
-		startDir = dir = rand() & 0x7;
+		startDir = dir = g_vm->_rnd->getRandomNumber(7);
 
 		do {
 			TilePoint           probeLoc;
@@ -1648,8 +1713,8 @@ void GameObject::dropInventoryObject(GameObject *obj, int16 count) {
 
 			//  Compute a _data.location to place the object
 			probeLoc = _data.location + incDirTable[dir] * dist;
-			probeLoc.u += (rand() & 0x3) - 2;
-			probeLoc.v += (rand() & 0x3) - 2;
+			probeLoc.u += g_vm->_rnd->getRandomNumber(3) - 2;
+			probeLoc.v += g_vm->_rnd->getRandomNumber(3) - 2;
 			probeLoc.z = tileSlopeHeight(probeLoc, mapNum, obj, &sti);
 
 			//  If _data.location is not blocked, drop the object
@@ -1710,7 +1775,7 @@ bool GameObject::inRange(const TilePoint &tp, uint16 range) {
 	TilePoint   vector = tp - loc;
 
 	return      vector.quickHDistance() <= range
-	            &&  abs(vector.z) <= range;
+	            &&  ABS(vector.z) <= range;
 }
 
 //-----------------------------------------------------------------------
@@ -2149,7 +2214,8 @@ void GameObject::setProtoNum(int32 nProto) {
 		}
 
 		//  If this object is in a container, then redraw the container window
-		if (!isWorld(oldParentID)) globalContainerList.setUpdate(oldParentID);
+		if (!isWorld(oldParentID))
+			g_vm->_containerList->setUpdate(oldParentID);
 	}
 }
 
@@ -2220,7 +2286,7 @@ void GameObject::mergeWith(GameObject *dropObj, GameObject *target, int16 count)
 		dropObj->deleteObject();
 	}
 
-	globalContainerList.setUpdate(target->IDParent());
+	g_vm->_containerList->setUpdate(target->IDParent());
 }
 
 
@@ -2249,7 +2315,7 @@ bool GameObject::stack(ObjectID enactor, ObjectID objToStackID) {
 		if (!objToStack->isMoving()) {
 			//  Increase the stack count
 			_data.location.z++;
-			globalContainerList.setUpdate(IDParent());
+			g_vm->_containerList->setUpdate(IDParent());
 		}
 
 		return true;
@@ -2372,6 +2438,40 @@ GameWorld::GameWorld(void **buf) {
 
 	*buf = bufferPtr;
 #endif
+}
+
+GameWorld::GameWorld(Common::SeekableReadStream *stream) {
+	size.u = size.v = stream->readSint16LE();
+	mapNum = stream->readSint16LE();
+
+	debugC(3, kDebugSaveload, "World %d", thisID());
+	debugC(3, kDebugSaveload, "... size.u = size.v = %d", size.u);
+	debugC(3, kDebugSaveload, "... mapNum = %d", mapNum);
+
+	if (size.u != 0) {
+		int32 sectorArrayCount;
+
+		sectorArraySize = size.u / kSectorSize;
+		sectorArrayCount = sectorArraySize * sectorArraySize;
+		sectorArray = new Sector[sectorArrayCount]();
+
+		if (sectorArray == nullptr)
+			error("Unable to allocate world %d sector array", mapNum);
+
+		for (int i = 0; i < sectorArrayCount; ++i) {
+			sectorArray[i].read(stream);
+			debugC(4, kDebugSaveload, "...... sectArray[%d].activationCount = %d", i, sectorArray[i].activationCount);
+			debugC(4, kDebugSaveload, "...... sectArray[%d].childID = %d", i, sectorArray[i].childID);
+		}
+	} else {
+		sectorArraySize = 0;
+		sectorArray = nullptr;
+	}
+}
+
+GameWorld::~GameWorld() {
+	if (sectorArray)
+		delete[] sectorArray;
 }
 
 //-------------------------------------------------------------------
@@ -2801,6 +2901,45 @@ void saveWorlds(SaveFileConstructor &saveGame) {
 	free(archiveBuffer);
 }
 
+void saveWorlds(Common::OutSaveFile *out) {
+	debugC(2, kDebugSaveload, "Saving worlds");
+
+	int32 archiveBufSize = 0;
+
+	//  Accumulate size of archive buffer
+
+	//  Add size of the current world's ID
+	archiveBufSize += sizeof(ObjectID);
+
+	for (int i = 0; i < worldCount; i++)
+		archiveBufSize += worldList[i].archiveSize();
+
+	out->write("WRLD", 4);
+	out->writeUint32LE(archiveBufSize);
+
+	out->writeUint16LE(currentWorld->thisID());
+
+	debugC(3, kDebugSaveload, "... currentWorld->thisID() = %d", currentWorld->thisID());
+
+	for (int i = 0; i < worldCount; ++i) {
+		Sector *sectArray = worldList[i].sectorArray;
+		int32 sectorArrayCount = worldList[i].sectorArraySize *
+		                         worldList[i].sectorArraySize;
+
+		out->writeSint16LE(worldList[i].size.u);
+		out->writeSint16LE(worldList[i].mapNum);
+
+		debugC(3, kDebugSaveload, "... worldList[%d].size.u = %d", i, worldList[i].size.u);
+		debugC(3, kDebugSaveload, "... worldList[%d].mapNum = %d", i, worldList[i].mapNum);
+
+		for (int j = 0; j < sectorArrayCount; ++j) {
+			sectArray[j].write(out);
+			debugC(4, kDebugSaveload, "...... sectArray[%d].activationCount = %d", j, sectArray[j].activationCount);
+			debugC(4, kDebugSaveload, "...... sectArray[%d].childID = %d", j, sectArray[j].childID);
+		}
+	}
+}
+
 //-------------------------------------------------------------------
 //	Load the worlds from a save game file
 
@@ -2843,6 +2982,27 @@ void loadWorlds(SaveFileReader &saveGame) {
 	setCurrentMap(currentWorld->mapNum);
 }
 
+void loadWorlds(Common::InSaveFile *in) {
+	debugC(2, kDebugSaveload, "Loading worlds");
+
+	ObjectID    currentWorldID;
+
+	worldList = new GameWorld[worldListSize]();
+	if (worldList == nullptr)
+		error("Unable to allocate world list");
+
+	currentWorldID = in->readUint16LE();
+
+	debugC(3, kDebugSaveload, "... currentWorldID = %d", currentWorldID);
+
+	for (int i = 0; i < worldCount; ++i)
+		new (&worldList[i]) GameWorld(in);
+
+	//  Reset the current world
+	currentWorld = (GameWorld *)GameObject::objectAddress(currentWorldID);
+	setCurrentMap(currentWorld->mapNum);
+}
+
 //-------------------------------------------------------------------
 //	Cleanup the GameWorld list
 
@@ -2853,7 +3013,10 @@ void cleanupWorlds(void) {
 		gw->cleanup();
 	}
 
-	if (worldList != nullptr) delete[] worldList;
+	if (worldList != nullptr) {
+		delete[] worldList;
+		worldList = nullptr;
+	}
 }
 
 //-------------------------------------------------------------------
@@ -2888,10 +3051,6 @@ void initObjects(void) {
 
 	if (resourceObjectCount < 4)
 		error("Unable to load Objects");
-
-	//  Add extra space for alias objects
-
-	objectCount = resourceObjectCount + extraObjects;
 
 	//  Allocate memory for the object list
 	objectListSize = objectCount * sizeof(GameObject);
@@ -3034,6 +3193,27 @@ void saveObjects(SaveFileConstructor &saveGame) {
 	free(archiveBuffer);
 }
 
+void saveObjects(Common::OutSaveFile *out) {
+	int32 archiveBufSize;
+
+	archiveBufSize = sizeof(objectLimboCount)
+	                 +   sizeof(actorLimboCount)
+	                 +   sizeof(importantLimboCount)
+	                 +   objectListSize;
+
+	out->write("OBJS", 4);
+	out->writeUint32LE(archiveBufSize);
+
+	//  Store the limbo counts
+	out->writeSint16LE(objectLimboCount);
+	out->writeSint16LE(actorLimboCount);
+	out->writeSint16LE(importantLimboCount);
+
+	//  Store the object list
+	for (int i = 0; i < objectCount; i++)
+		objectList[i].write(out);
+}
+
 //-------------------------------------------------------------------
 //	Load the object list from a save file
 
@@ -3048,7 +3228,7 @@ void loadObjects(SaveFileReader &saveGame) {
 
 	//  Restore the object list
 	objectListSize = saveGame.bytesLeftInChunk();
-	objectCount = objectListSize / sizeof(GameObject);
+	//objectCount = objectListSize / sizeof(GameObject);
 
 	objectList = new GameObject[objectCount]();
 	if (objectList == nullptr)
@@ -3065,6 +3245,20 @@ void loadObjects(SaveFileReader &saveGame) {
 		    ?   &objectProtos[*((int16 *)&obj->prototype)]
 		    :   nullptr;
 	}
+}
+
+void loadObjects(Common::InSaveFile *in) {
+	//  Restore the limbo counts
+	objectLimboCount = in->readSint16LE();
+	actorLimboCount = in->readSint16LE();
+	importantLimboCount = in->readSint16LE();
+
+	objectList = new GameObject[objectCount]();
+	if (objectList == nullptr)
+		error("Unable to load Objects");
+
+	for (int i = 0; i < objectCount; i++)
+		objectList[i].read(in);
 }
 
 //-------------------------------------------------------------------
@@ -3134,6 +3328,17 @@ void Sector::deactivate(void) {
 
 	activationCount--;
 }
+
+void Sector::read(Common::InSaveFile *in) {
+	activationCount = in->readUint16LE();
+	childID = in->readUint16LE();
+}
+
+void Sector::write(Common::OutSaveFile *out) {
+	out->writeUint16LE(activationCount);
+	out->writeUint16LE(childID);
+}
+
 
 /* ======================================================================= *
    ActiveRegion member functions
@@ -3314,7 +3519,7 @@ void loadActiveRegions(SaveFileReader &saveGame) {
 //	Constructor
 
 SectorRegionObjectIterator::SectorRegionObjectIterator(GameWorld *world) :
-	searchWorld(world) {
+	searchWorld(world), _currentObject(nullptr) {
 	assert(searchWorld != nullptr);
 	assert(isWorld(searchWorld));
 
@@ -3522,8 +3727,8 @@ ObjectID RingObjectIterator::next(GameObject **obj) {
 int16 DispRegionObjectIterator::computeDist(const TilePoint &tp) {
 	//  Compute distance from object to screen center.
 	//  REM: remember to add in Z there somewhere.
-	return  abs(getCenter().u - tp.u)
-	        +  abs(getCenter().v - tp.v);
+	return  ABS(getCenter().u - tp.u)
+	        +  ABS(getCenter().v - tp.v);
 }
 
 /* ======================================================================= *
@@ -4153,28 +4358,6 @@ GameObject *objectCollision(GameObject *obj, GameWorld *world, const TilePoint &
 }
 
 /* ======================================================================= *
-   Randomly Scatter Object Location In World
- * ======================================================================= */
-
-//void GameWorld::randomScatter()
-//{
-//  ObjectIterator  objIter( this );
-//  GameObject      *objPtr;
-//  ObjectID        id;
-//  TilePoint       randLoc;
-//  Point16         maxUV(100,100);//Temp Test
-
-//  Iterate through each object in the world
-
-//  while ( ( id = objIter.next( &objPtr ) ) != Nothing )
-//  {
-//  Select a random Location.
-//      randLoc.u = rand() % maxUV.x;
-//      randLoc.v = rand() % maxUV.y;
-//      objPtr->move(randLoc);
-//  }
-//}
-/* ======================================================================= *
    Test for line of sight between two objects
  * ======================================================================= */
 
@@ -4555,7 +4738,7 @@ void doBackgroundSimulation(void) {
 			if (obj->isScavengable()
 			        &&  !obj->isActivated()
 			        &&  isWorld(obj->IDParent())
-			        &&  rand() % MIN(objectLimboCount / 2, 60) == 0) {
+			        &&  g_vm->_rnd->getRandomNumber(MIN(objectLimboCount / 2, 60) - 1) == 0) {
 				obj->deleteObjectRecursive();
 			}
 

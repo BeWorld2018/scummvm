@@ -48,6 +48,8 @@ CastMember::CastMember(Cast *cast, uint16 castId, Common::SeekableReadStreamEndi
 	_modified = true;
 
 	_objType = kCastMemberObj;
+
+	_widget = nullptr;
 }
 
 CastMemberInfo *CastMember::getInfo() {
@@ -180,7 +182,31 @@ Graphics::MacWidget *BitmapCastMember::createWidget(Common::Rect &bbox, Channel 
 	}
 
 	Graphics::MacWidget *widget = new Graphics::MacWidget(g_director->getCurrentWindow(), bbox.left, bbox.top, bbox.width(), bbox.height(), g_director->_wm, false);
-	widget->getSurface()->blitFrom(*_img->getSurface());
+
+	// scale for drawing a different size sprite
+	if (bbox.width() < _initialRect.width() || bbox.height() < _initialRect.height()) {
+
+		int scaleX = SCALE_THRESHOLD * _initialRect.width() / bbox.width();
+		int scaleY = SCALE_THRESHOLD * _initialRect.height() / bbox.height();
+
+		for (int y = 0, scaleYCtr = 0; y < bbox.height(); y++, scaleYCtr += scaleY) {
+			if (g_director->_wm->_pixelformat.bytesPerPixel == 1) {
+				for (int x = 0, scaleXCtr = 0; x < bbox.width(); x++, scaleXCtr += scaleX) {
+					const byte *src = (const byte *)_img->getSurface()->getBasePtr(scaleXCtr / SCALE_THRESHOLD, scaleYCtr / SCALE_THRESHOLD);
+					*(byte *)widget->getSurface()->getBasePtr(x, y) = *src;
+				}
+			} else {
+				for (int x = 0, scaleXCtr = 0; x < bbox.width(); x++, scaleXCtr += scaleX) {
+					const int *src = (const int *)_img->getSurface()->getBasePtr(scaleXCtr / SCALE_THRESHOLD, scaleYCtr / SCALE_THRESHOLD);
+					*(int *)widget->getSurface()->getBasePtr(x, y) = *src;
+				}
+			}
+		}
+
+	} else {
+		widget->getSurface()->blitFrom(*_img->getSurface());
+	}
+
 	return widget;
 }
 
@@ -259,6 +285,7 @@ DigitalVideoCastMember::DigitalVideoCastMember(Cast *cast, uint16 castId, Common
 	_type = kCastDigitalVideo;
 	_video = nullptr;
 	_lastFrame = nullptr;
+	_channel = nullptr;
 
 	_getFirstFrame = false;
 	_duration = 0;
@@ -541,7 +568,9 @@ TextCastMember::TextCastMember(Cast *cast, uint16 castId, Common::SeekableReadSt
 	_textSlant = 0;
 	_bgpalinfo1 = _bgpalinfo2 = _bgpalinfo3 = 0;
 	_fgpalinfo1 = _fgpalinfo2 = _fgpalinfo3 = 0xff;
-	_widget = nullptr;
+
+	// seems like the line spacing is default to 1 in D4
+	_lineSpacing = g_director->getVersion() >= 400 ? 1 : 0;
 
 	if (version < kFileVer400) {
 		_flags1 = flags1; // region: 0 - auto, 1 - matte, 2 - disabled
@@ -764,8 +793,36 @@ void TextCastMember::setText(const char *text) {
 	}
 }
 
+// D4 dictionary book said this is line spacing
+int TextCastMember::getTextHeight() {
+	if (_widget)
+		return ((Graphics::MacText *)_widget)->getLineSpacing();
+	else
+		return _lineSpacing;
+	return 0;
+}
+
+// this should be amend when we have some where using this function
+int TextCastMember::getTextSize() {
+	if (_widget)
+		return ((Graphics::MacText *)_widget)->getTextSize();
+	else
+		return _fontSize;
+	return 0;
+}
+
 Common::String TextCastMember::getText() {
 	return _ptext;
+}
+
+void TextCastMember::setTextSize(int textSize) {
+	if (_widget) {
+		((Graphics::MacText *)_widget)->setTextSize(textSize);
+		((Graphics::MacText *)_widget)->draw();
+	} else {
+		_fontSize = textSize;
+		_modified = true;
+	}
 }
 
 bool TextCastMember::isEditable() {

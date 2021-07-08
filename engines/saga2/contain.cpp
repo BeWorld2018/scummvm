@@ -44,14 +44,12 @@
 
 namespace Saga2 {
 
-// debug
-uint8 weight = 0;
-uint8 encum  = 0;
+enum {
+	kMaxOpenDistance = 32
+};
 
-const int           maxOpenDistance = 32;
 // selector image pointer
-static void         *selImage;
-
+static void *selImage;
 
 /* ===================================================================== *
    Imports
@@ -108,8 +106,6 @@ uint16      ContainerView::numPicked = 1;
 GameObject  *ContainerView::objToGet;
 int32       ContainerView::amountAccumulator = 0;
 int16       ContainerView::amountIndY = -1;
-
-ContainerList       globalContainerList;
 
 //-----------------------------------------------------------------------
 //	Physical container appearance
@@ -265,6 +261,9 @@ ContainerView::ContainerView(
 	scrollPosition  = 0;
 	totalRows       = app.totRows;
 	setMousePoll(true);
+	totalMass = 0;
+	totalBulk = 0;
+	numObjects = 0;
 }
 
 //  Destructor
@@ -1410,9 +1409,10 @@ ContainerNode::ContainerNode(ContainerList &cl, ObjectID id, int typ) {
 	object      = id;
 	owner       = ownerID;
 	action      = 0;
+	mindType    = 0;
 
 	//  Add to container list.
-	cl.add(*this);
+	cl.add(this);
 }
 
 //  Return the container window for a container node, if it is visible
@@ -1431,7 +1431,7 @@ ContainerNode::~ContainerNode() {
 	hide();
 
 	//  Remove from container list
-	DNode::remove();
+	g_vm->_containerList->remove(this);
 }
 
 //  Restore the state of this ContainerNode from archive buffer
@@ -1488,9 +1488,6 @@ void ContainerNode::show(void) {
 	//  open the window; Object should already be "open"
 	if (window == NULL) {
 		switch (type) {
-		case readyType:
-			return;
-
 		case physicalType:
 			physicalContainerAppearance.rows    = proto->getViewableRows();
 			physicalContainerAppearance.cols    = proto->getViewableCols();
@@ -1512,6 +1509,10 @@ void ContainerNode::show(void) {
 		case enchantType:
 			window = new EnchantmentContainerWindow(*this, enchantmentContainerAppearance);
 			break;
+
+		case readyType:
+		default:
+			return;
 		}
 	}
 
@@ -1538,20 +1539,18 @@ void ContainerNode::update(void) {
 
 //  Find a container node, given a specific object
 ContainerNode *ContainerList::find(ObjectID id) {
-	for (ContainerNode *n = (ContainerNode *)first();
-	        n;
-	        n = (ContainerNode *)n->next()) {
-		if (n->object == id) return n;
-	}
+	for (Common::List<ContainerNode *>::iterator it = _list.begin(); it != _list.end(); ++it)
+		if ((*it)->object == id)
+			return *it;
+
 	return NULL;
 }
 
 ContainerNode *ContainerList::find(ObjectID id, int16 type) {
-	for (ContainerNode *n = (ContainerNode *)first();
-	        n;
-	        n = (ContainerNode *)n->next()) {
-		if (n->object == id && n->type == type) return n;
-	}
+	for (Common::List<ContainerNode *>::iterator it = _list.begin(); it != _list.end(); ++it)
+		if ((*it)->object == id && (*it)->type == type)
+			return *it;
+
 	return NULL;
 }
 
@@ -1573,8 +1572,10 @@ bool ContainerNode::isAccessable(ObjectID enactor) {
 	holder = obj->possessor();
 	if (holder != Nothing || isActor(object)) {
 		//  "Reach" for other players is further than for other objects
-		if (holder != a->thisID() && dist > 96) return false;
-	} else if (dist > maxOpenDistance) return false;
+		if (holder != a->thisID() && dist > 96)
+			return false;
+	} else if (dist > kMaxOpenDistance)
+		return false;
 
 	return true;
 }
@@ -1590,36 +1591,36 @@ void ContainerNode::changeOwner(int16 newOwner) {
  * ===================================================================== */
 
 void ContainerList::setPlayerNum(PlayerActorID playerNum) {
-	ContainerNode   *next;
-	ContainerNode   *n;
-
 	//  Close all containers which are not on the ground and not owned
 	//  by the current protagonist.
-	for (n = (ContainerNode *)first(); n; n = next) {
-		next = (ContainerNode *)n->next();
+	for (Common::List<ContainerNode *>::iterator it = _list.begin(); it != _list.end(); ++it) {
+		ContainerNode *n = *it;
 
-		if (n->owner != ContainerNode::nobody && n->owner != playerNum) n->hide();
+		if (n->owner != ContainerNode::nobody && n->owner != playerNum)
+			n->hide();
 	}
 
 	//  Open any containers which belong to the new protagonist.
-	for (n = (ContainerNode *)last();
-	        n;
-	        n = (ContainerNode *)n->prev()) {
-		if (n->owner == playerNum) n->markForShow();
+	for (Common::List<ContainerNode *>::iterator it = _list.begin(); it != _list.end(); ++it) {
+		ContainerNode *n = *it;
+
+		if (n->owner == playerNum)
+			n->markForShow();
 	}
 }
 
 void ContainerList::doDeferredActions(void) {
-	ContainerNode   *next;
-	ContainerNode   *n;
+	Common::List<ContainerNode *>::iterator nextIt;
 	Actor           *a = getCenterActor();
 	TilePoint       tp = a->getLocation();
 	GameObject      *world = a->parent();
 
 	//  Close all containers which are not on the ground and not owned
 	//  by the current protagonist.
-	for (n = (ContainerNode *)first(); n; n = next) {
-		next = (ContainerNode *)n->next();
+	for (Common::List<ContainerNode *>::iterator it = _list.begin(); it != _list.end(); it = nextIt) {
+		nextIt = it;
+		nextIt++;
+		ContainerNode *n = *it;
 
 		//  If the object is not in a player inventory (i.e. on the ground)
 		if (n->owner == ContainerNode::nobody) {
@@ -1627,7 +1628,7 @@ void ContainerList::doDeferredActions(void) {
 			//  from the protagonist, then quietly close the object.
 			GameObject  *obj = GameObject::objectAddress(n->object);
 			if (obj->world() != world
-			        || (obj->getWorldLocation() - tp).quickHDistance() > maxOpenDistance) {
+			        || (obj->getWorldLocation() - tp).quickHDistance() > kMaxOpenDistance) {
 				//  Close object image and window (silently)
 				obj->setFlags(0, objectOpen);
 				delete n;
@@ -1652,13 +1653,13 @@ void ContainerList::doDeferredActions(void) {
 }
 
 void ContainerList::setUpdate(ObjectID id) {
-	ContainerNode   *n;
-
 	//  Close all containers which are not on the ground and not owned
 	//  by the current protagonist.
-	for (n = (ContainerNode *)first(); n; n = (ContainerNode *)n->next()) {
-//		if (n->object == id) n->markForUpdate();
-		if (n->object == id) n->update();
+	for (Common::List<ContainerNode *>::iterator it = _list.begin(); it != _list.end(); ++it) {
+		ContainerNode *n = *it;
+
+		if (n->object == id)
+			n->update();
 		else if (n->type == ContainerNode::mentalType    //  Special case for mind containers
 		         &&  n->object == GameObject::objectAddress(id)->IDParent())
 			n->update();
@@ -1681,12 +1682,9 @@ ContainerNode *CreateContainerNode(ObjectID id, bool open, int16) {
 
 		if (((Actor *)obj)->isDead()) {
 			//  Open dead container for dead actor
-			if (!(cn = globalContainerList.find(owner, ContainerNode::deadType)))
-				cn = new ContainerNode(globalContainerList, id, ContainerNode::deadType);
+			if (!(cn = g_vm->_containerList->find(owner, ContainerNode::deadType)))
+				cn = new ContainerNode(*g_vm->_containerList, id, ContainerNode::deadType);
 		} else if (owner != ContainerNode::nobody) {
-			//  Open mental container for living player actor.
-//			if (!(cn = globalContainerList.find( owner, ContainerNode::mentalType )))
-//				cn = new ContainerNode( globalContainerList, id, ContainerNode::mentalType );
 			return OpenMindContainer(owner, open, /*mType*/ openMindType);
 		}
 #if DEBUG
@@ -1696,8 +1694,8 @@ ContainerNode *CreateContainerNode(ObjectID id, bool open, int16) {
 		if (actorIDToPlayerID(obj->possessor(), owner) == false)
 			owner = ContainerNode::nobody;
 
-		if (!(cn = globalContainerList.find(id, ContainerNode::physicalType)))
-			cn = new ContainerNode(globalContainerList, id, ContainerNode::physicalType);
+		if (!(cn = g_vm->_containerList->find(id, ContainerNode::physicalType)))
+			cn = new ContainerNode(*g_vm->_containerList, id, ContainerNode::physicalType);
 	}
 
 	//  If node was successfull created, and we wanted it open, and the owner
@@ -1712,7 +1710,7 @@ ContainerNode *CreateContainerNode(ObjectID id, bool open, int16) {
 }
 
 ContainerNode *CreateReadyContainerNode(PlayerActorID player) {
-	return new ContainerNode(globalContainerList,
+	return new ContainerNode(*g_vm->_containerList,
 	                            getPlayerActorAddress(player)->getActorID(),
 	                            ContainerNode::readyType);
 }
@@ -1721,15 +1719,13 @@ ContainerNode *OpenMindContainer(PlayerActorID player, int16 open, int16 type) {
 	ContainerNode   *cn;
 	ObjectID        id = getPlayerActorAddress(player)->getActorID();
 
-	if (!(cn = globalContainerList.find(id, ContainerNode::mentalType))) {
-		cn = new ContainerNode(globalContainerList, id, ContainerNode::mentalType);
+	if (!(cn = g_vm->_containerList->find(id, ContainerNode::mentalType))) {
+		cn = new ContainerNode(*g_vm->_containerList, id, ContainerNode::mentalType);
 		cn->mindType = type;
 
 		//  If node was successfull created, and we wanted it open, and the owner
 		//  is the center actor or no-actor then make the container window visible.
-		if (cn != NULL
-		        &&  open
-		        &&  id == getCenterActorID()) {
+		if (open && id == getCenterActorID()) {
 			cn->show();
 		}
 	} else {
@@ -1756,11 +1752,14 @@ void initContainers(void) {
 }
 
 void cleanupContainers(void) {
-	if (selImage)       g_vm->_imageCache->releaseImage(selImage);
-	if (containerRes)   resFile->disposeContext(containerRes);
+	if (selImage)
+		g_vm->_imageCache->releaseImage(selImage);
+	if (containerRes)
+		resFile->disposeContext(containerRes);
 
 	selImage = NULL;
 	containerRes = NULL;
+	delete g_vm->_containerList;
 }
 
 void initContainerNodes(void) {
@@ -1770,9 +1769,7 @@ void initContainerNodes(void) {
 	ContainerNode   *node;
 	bool            onlyReady = true;
 
-	for (node = (ContainerNode *)globalContainerList.first();
-	        node != NULL;
-	        node = (ContainerNode *)node->next()) {
+	for (node = g_vm->_containerList->first(); node != NULL; node = node->next()) {
 		if (node->getType() != ContainerNode::readyType) {
 			onlyReady = false;
 			break;
@@ -1784,22 +1781,21 @@ void initContainerNodes(void) {
 }
 
 void saveContainerNodes(SaveFileConstructor &saveGame) {
-	ContainerNode       *node;
 	int16               numNodes = 0;
 	void                *archiveBuffer,
 	                    *bufferPtr;
 	int32               archiveBufSize;
 
 	//  Make sure there are no pending container view actions
-	globalContainerList.doDeferredActions();
+	g_vm->_containerList->doDeferredActions();
 
 	archiveBufSize = sizeof(numNodes);
 
 	//  Count the number of nodes to save
-	for (node = (ContainerNode *)globalContainerList.first();
-	        node != NULL;
-	        node = (ContainerNode *)node->next()) {
-		if (node->getType() != ContainerNode::readyType)
+	for (Common::List<ContainerNode *>::iterator it = g_vm->_containerList->_list.begin(); it != g_vm->_containerList->_list.end(); ++it) {
+		ContainerNode *n = *it;
+
+		if (n->getType() != ContainerNode::readyType)
 			numNodes++;
 	}
 
@@ -1818,11 +1814,11 @@ void saveContainerNodes(SaveFileConstructor &saveGame) {
 	bufferPtr = (int16 *)bufferPtr + 1;
 
 	//  Store the nodes
-	for (node = (ContainerNode *)globalContainerList.first();
-	        node != NULL;
-	        node = (ContainerNode *)node->next()) {
-		if (node->getType() != ContainerNode::readyType)
-			bufferPtr = node->archive(bufferPtr);
+	for (Common::List<ContainerNode *>::iterator it = g_vm->_containerList->_list.begin(); it != g_vm->_containerList->_list.end(); ++it) {
+		ContainerNode *n = *it;
+
+		if (n->getType() != ContainerNode::readyType)
+			bufferPtr = n->archive(bufferPtr);
 	}
 
 	//  Write the archive data to the save file
@@ -1837,7 +1833,7 @@ void saveContainerNodes(SaveFileConstructor &saveGame) {
 
 void loadContainerNodes(SaveFileReader &saveGame) {
 	ContainerNode       *node;
-	DList               tempList;
+	Common::List<ContainerNode *> tempList;
 	int16               i,
 	                    numNodes;
 	void                *archiveBuffer,
@@ -1846,16 +1842,6 @@ void loadContainerNodes(SaveFileReader &saveGame) {
 
 	//  Read in the number of container nodes to restore
 	saveGame.read(&numNodes, sizeof(numNodes));
-
-	for (i = 0; i < numNodes; i++) {
-		//  Allocate a new uninitialized ContainerNode
-		node = new ContainerNode;
-		if (node == NULL)
-			error("Unable to allocate ContainerNode");
-
-		//  Hold node in temporary list
-		tempList.addTail(*node);
-	}
 
 	//  Allocate archive buffer
 	archiveBufSize = saveGame.bytesLeftInChunk();
@@ -1869,14 +1855,13 @@ void loadContainerNodes(SaveFileReader &saveGame) {
 	bufferPtr = archiveBuffer;
 
 	for (i = 0; i < numNodes; i++) {
-		//  Retrieve node from temporary list
-		node = (ContainerNode *)tempList.remHead();
+		node = new ContainerNode;
 
 		//  Restore the state of the node
 		bufferPtr = node->restore(bufferPtr);
 
 		//  Add it back to the container list
-		globalContainerList.add(*node);
+		g_vm->_containerList->add(node);
 	}
 
 	assert(tempList.empty());
@@ -1886,21 +1871,16 @@ void loadContainerNodes(SaveFileReader &saveGame) {
 }
 
 void cleanupContainerNodes(void) {
-	ContainerNode       *node,
-	                    *nextNode;
+	for (Common::List<ContainerNode *>::iterator it = g_vm->_containerList->_list.begin(); it != g_vm->_containerList->_list.end(); ++it) {
+		ContainerNode *n = *it;
 
-	for (node = (ContainerNode *)globalContainerList.first();
-	        node != NULL;
-	        node = nextNode) {
-		nextNode = (ContainerNode *)node->next();
-
-		if (node->getType() != ContainerNode::readyType)
-			delete node;
+		if (n->getType() != ContainerNode::readyType)
+			delete n;
 	}
 }
 
 void updateContainerWindows(void) {
-	globalContainerList.doDeferredActions();
+	g_vm->_containerList->doDeferredActions();
 }
 
 void setMindContainer(int index, IntangibleContainerWindow &cw) {

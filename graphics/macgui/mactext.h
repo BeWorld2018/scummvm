@@ -193,7 +193,28 @@ public:
 	void appendText(const Common::U32String &str, int fontId = kMacFontChicago, int fontSize = 12, int fontSlant = kMacFontRegular, uint16 r = 0, uint16 g = 0, uint16 b = 0, bool skipAdd = false);
 	void appendText(const Common::U32String &str, const Font *font, uint16 r = 0, uint16 g = 0, uint16 b = 0, bool skipAdd = false);
 
+	int getTextFont() { return _defaultFormatting.fontId; }
+
+	// because currently, we are counting linespacing as font height
+	int getTextSize() { return _defaultFormatting.fontSize; }
+	void setTextSize(int textSize);
+
+	int getTextSize(int start, int end);
+	void setTextSize(int textSize, int start, int end);
+
+	uint getTextColor() { return _defaultFormatting.fgcolor; }
+	uint getTextColor(int start, int end);
+
+	int getTextFont(int start, int end);
+	void setTextFont(int fontId, int start, int end);
+
+	int getTextSlant(int start, int end);
+	void setTextSlant(int textSlant, int start, int end);
+
 private:
+	MacFontRun getTextChunks(int start, int end);
+	void setTextChunks(int start, int end, int param, void (*callback)(MacFontRun &, int));
+
 	void appendText_(const Common::U32String &strWithFont, uint oldLen);
 	void deletePreviousCharInternal(int *row, int *col);
 	void insertTextFromClipboard();
@@ -233,6 +254,8 @@ public:
 	void clearSelection();
 	Common::U32String cutSelection();
 	const SelectedText *getSelectedText() { return &_selectedText; }
+
+	int getLineSpacing() { return _interLinear; }
 
 	/**
 	 * set the selection of mactext

@@ -20,8 +20,8 @@
  *
  */
 
-#ifndef ULTIMA8_GUMPS_REMORSEMENUGUMP_H
-#define ULTIMA8_GUMPS_REMORSEMENUGUMP_H
+#ifndef ULTIMA8_GUMPS_CRUDEMOGUMP_H
+#define ULTIMA8_GUMPS_CRUDEMOGUMP_H
 
 #include "ultima/ultima8/gumps/modal_gump.h"
 #include "ultima/ultima8/misc/classtype.h"
@@ -30,29 +30,30 @@ namespace Ultima {
 namespace Ultima8 {
 
 /**
- * The game menu for Crusader: No Remorse.  Different enough to the U8 menu that it's implemented separately.
+ * Full-screen gump for showing the "buy me" screen
  */
-class RemorseMenuGump : public ModalGump {
+class CruDemoGump : public ModalGump {
 public:
 	ENABLE_RUNTIME_CLASSTYPE()
 
-	RemorseMenuGump();
-	~RemorseMenuGump() override;
+	CruDemoGump();
+	CruDemoGump(Common::SeekableReadStream *bmprs,
+	            uint32 flags = FLAG_PREVENT_SAVE, int32 layer = LAYER_MODAL);
+	~CruDemoGump() override;
 
 	// Init the gump, call after construction
 	void InitGump(Gump *newparent, bool take_focus = true) override;
+
 	void Close(bool no_del = false) override;
 
 	// Paint the Gump
 	void PaintThis(RenderSurface *, int32 lerp_factor, bool scaled) override;
 
 	bool OnKeyDown(int key, int mod) override;
-	bool OnTextInput(int unicode) override;
-	void ChildNotify(Gump *child, uint32 message) override;
 
 protected:
-
-	virtual void selectEntry(int entry);
+	//! The background picture
+	RenderSurface *_background;
 };
 
 } // End of namespace Ultima8

@@ -36,6 +36,7 @@
 
 #include "saga2/gdraw.h"
 #include "saga2/mouseimg.h"
+#include "saga2/contain.h"
 
 namespace Saga2 {
 
@@ -59,7 +60,14 @@ Saga2Engine::Saga2Engine(OSystem *syst)
 	_videoX = _videoY = 0;
 	_loadedWeapons = 0;
 
+	_autoAggression = true;
+	_autoWeapon = true;
+	_showNight = true;
+	_speechText = true;
+
 	SearchMan.addSubDirectoryMatching(gameDataDir, "res");
+	SearchMan.addSubDirectoryMatching(gameDataDir, "dos/drivers"); // For Miles Sound files
+	SearchMan.addSubDirectoryMatching(gameDataDir, "drivers");
 
 	_loadedWeapons = 0;
 }
@@ -76,6 +84,8 @@ Saga2Engine::~Saga2Engine() {
 Common::Error Saga2Engine::run() {
 	// Initialize graphics using following:
 	initGraphics(640, 480);
+
+	_containerList = new ContainerList;
 
 	readConfig();
 

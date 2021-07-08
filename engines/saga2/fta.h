@@ -125,9 +125,11 @@ void initTimer(void);
 
 //  Save the timer to a save file
 void saveTimer(SaveFileConstructor &saveGame);
+void saveTimer(Common::OutSaveFile *out);
 
 //  Load the timer from a save file
 void loadTimer(SaveFileReader &saveGame);
+void loadTimer(Common::InSaveFile *in);
 
 //  Cleanup the timer -- nothing to do
 inline void cleanupTimer(void) {}
@@ -163,6 +165,7 @@ void  *LoadFile(char *filename);             // load file into buffer
 //  Resource loading
 
 void *LoadResource(hResContext *con, uint32 id, const char desc[]);
+void dumpResource(hResContext *con, uint32 id);
 Common::SeekableReadStream *loadResourceToStream(hResContext *con, uint32 id, const char desc[]);
 
 //  Directory control
@@ -191,7 +194,9 @@ void cleanupPathFinder(void);
 
 void initGlobals(void);
 void saveGlobals(SaveFileConstructor &saveGame);
+void saveGlobals(Common::OutSaveFile *out);
 void loadGlobals(SaveFileReader &saveGame);
+void loadGlobals(Common::InSaveFile *in);
 inline void cleanupGlobals(void) {}      // do nothing
 
 /* ===================================================================== *

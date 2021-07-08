@@ -161,7 +161,7 @@ int32 getPathFindIQ(GameObject *obj) {
 				pfIQ = 250;
 			else
 				pfIQ = 100;
-			if (rand() % 10 == 5)
+			if (g_vm->_rnd->getRandomNumber(9) == 5)
 				pfIQ += 200;
 
 		}
@@ -245,9 +245,9 @@ bool unstickObject(GameObject *obj) {
 	TilePoint       bestPos;
 
 	for (int tries = 128; tries >= 0; tries--) {
-		int32       dx = rand() % (radius * 2 + 1) - radius,
-		            dy = rand() % (radius * 2 + 1) - radius,
-		            dz = rand() % (radius * 2 + 1) - radius;
+		int32       dx = g_vm->_rnd->getRandomNumber(radius * 2) - radius,
+		            dy = g_vm->_rnd->getRandomNumber(radius * 2) - radius,
+		            dz = g_vm->_rnd->getRandomNumber(radius * 2) - radius;
 		int16       tHeight;
 
 		//  Compute the actual _data.location of the new point
@@ -274,7 +274,7 @@ bool unstickObject(GameObject *obj) {
 
 			//  Set new radius to maximum of abs of the 3 coords, minus 1
 			//  (Because we want solution to converge faster)
-			newRadius = MAX(MAX(abs(dx), abs(dy)), abs(dz)) - 1;
+			newRadius = MAX(MAX(ABS(dx), ABS(dy)), ABS(dz)) - 1;
 			if (newRadius < radius) {
 				radius = newRadius;
 
@@ -511,7 +511,8 @@ void *MotionTask::restore(void *buf) {
 	            :   NULL;
 
 	//  If the object is an actor, plug this motion task into the actor
-	if (isActor(object))((Actor *)object)->moveTask = this;
+	if (object && isActor(object))
+		((Actor *)object)->moveTask = this;
 
 	if (motionType == motionTypeWalk
 	        ||  prevMotionType == motionTypeWalk) {
@@ -1187,7 +1188,7 @@ void MotionTask::remove(int16 returnVal) {
 		Actor   *a = (Actor *)object;
 
 		a->moveTask = NULL;
-		a->cycleCount = rand() % 20;
+		a->cycleCount = g_vm->_rnd->getRandomNumber(19);
 
 		//  Make sure the actor is not left in a permanently
 		//  uninterruptable state with no motion task to reset it
@@ -2178,7 +2179,7 @@ void MotionTask::ballisticAction(void) {
 	//  Make Up For Rounding Errors In ThrowTo
 
 	if (uFrac) {
-		uErrorTerm += abs(uFrac);
+		uErrorTerm += ABS(uFrac);
 
 		if (uErrorTerm >= steps) {
 			uErrorTerm -= steps;
@@ -2190,7 +2191,7 @@ void MotionTask::ballisticAction(void) {
 	}
 
 	if (vFrac) {
-		vErrorTerm += abs(vFrac);
+		vErrorTerm += ABS(vFrac);
 
 		if (vErrorTerm >= steps) {
 			vErrorTerm -= steps;
@@ -2434,7 +2435,7 @@ bool MotionTask::nextWayPoint(void) {
 			//  use dumb pathfinding until the pathfinder finishes it's task.
 
 			if ((finalTarget - object->_data.location).quickHDistance() > 0
-			        ||  abs(finalTarget.z - object->_data.location.z) > kMaxStepHeight) {
+			        ||  ABS(finalTarget.z - object->_data.location.z) > kMaxStepHeight) {
 				//  If no pathfind in progress
 				if ((flags & pathFind)
 				        &&  !(flags & finalPath)
@@ -2585,7 +2586,7 @@ void MotionTask::walkAction(void) {
 
 			//  If we're not already there, then proceed towards
 			//  the target.
-			if (targetDist > 0 || abs(targetVector.z) > kMaxStepHeight)
+			if (targetDist > 0 || ABS(targetVector.z) > kMaxStepHeight)
 				break;
 		}
 
@@ -2645,7 +2646,7 @@ void MotionTask::walkAction(void) {
 
 	if (moveTaskDone || moveTaskWaiting) {
 		movementDirection = a->currentFacing;
-	} else if (targetDist == 0 && abs(targetVector.z) > kMaxStepHeight) {
+	} else if (targetDist == 0 && ABS(targetVector.z) > kMaxStepHeight) {
 		if (pathFindTask) {
 			movementDirection = a->currentFacing;
 			moveTaskWaiting = true;
@@ -2822,8 +2823,8 @@ void MotionTask::walkAction(void) {
 			//  direction for a random duration
 			flags |= agitated | reset;
 
-			direction = rand() & 0x7;
-			actionCounter = 8 + (rand() & 0x7);
+			direction = g_vm->_rnd->getRandomNumber(7);
+			actionCounter = 8 + g_vm->_rnd->getRandomNumber(7);
 
 			//  Discard the path
 			if (flags & pathFind) {
@@ -3230,7 +3231,7 @@ struct CombatMotionSet {
 
 	//  Select randome element from the array
 	uint8 selectRandom(void) const {
-		return list[rand() % listSize];
+		return list[g_vm->_rnd->getRandomNumber(listSize - 1)];
 	}
 };
 
@@ -3581,11 +3582,8 @@ void MotionTask::fireBowAction(void) {
 					                    * (actorCrossSection + projCrossSection);
 					actorLoc.z += a->proto()->height * 7 / 8;
 
-					if ((projID =   proj->extractMerged(
-					                    Location(actorLoc, a->IDParent()),
-					                    1))
-					        !=  Nothing) {
-						globalContainerList.setUpdate(a->thisID());
+					if ((projID =   proj->extractMerged(Location(actorLoc, a->IDParent()), 1)) !=  Nothing) {
+						g_vm->_containerList->setUpdate(a->thisID());
 						proj = GameObject::objectAddress(projID);
 						shootObject(*proj, *a, *targetObj, 16);
 					}
@@ -3911,7 +3909,7 @@ void MotionTask::acceptHitAction(void) {
 
 		a->setActionPoints(animationFrames + 1);
 
-		if (rand() & 0x1) {
+		if (g_vm->_rnd->getRandomNumber(1)) {
 			//  Calculate the new position to knock the actor back to
 			newLoc += dirTable[(a->currentFacing - 4) & 0x7];
 
@@ -3971,7 +3969,7 @@ void MotionTask::fallDownAction(void) {
 
 		a->setActionPoints(animationFrames + 1);
 
-		if (rand() & 0x1) {
+		if (g_vm->_rnd->getRandomNumber(1)) {
 			//  Calculate the new position to knock the actor back to
 			newLoc += dirTable[(a->currentFacing - 4) & 0x7];
 			newLoc.z = tileSlopeHeight(newLoc, a, &sti);
@@ -4192,7 +4190,7 @@ void MotionTask::updatePositions(void) {
 
 			if (mt->flags & reset) {
 				a->setAction(actionStand, 0);
-				a->cycleCount = rand() & 0x3;
+				a->cycleCount = g_vm->_rnd->getRandomNumber(3);
 				mt->flags &= ~(reset | nextAnim);
 			}
 			if (a->cycleCount == 0) {
@@ -4202,7 +4200,7 @@ void MotionTask::updatePositions(void) {
 			} else if (mt->flags & nextAnim) {
 				if (a->nextAnimationFrame()) {
 					a->setAction(actionStand, 0);
-					a->cycleCount = rand() & 0x3;
+					a->cycleCount = g_vm->_rnd->getRandomNumber(3);
 					mt->flags &= ~nextAnim;
 				}
 			} else
