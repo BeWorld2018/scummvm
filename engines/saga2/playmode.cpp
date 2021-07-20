@@ -45,15 +45,10 @@ const int defaultStatusWait = 15;
    Imports
  * ===================================================================== */
 
-extern gPixelMap    tileDrawMap;
-extern gPort        tileDrawPort;
 extern BackWindow   *mainWindow;
-extern SpriteSet    *objectSprites;        // object sprites
-extern gToolBase    G_BASE;
 
 extern APPFUNC(cmdClickSpeech);
-extern PlayerActor  playerList[];           // a list of the players (brothers)
-extern textPallete  genericTextPal;
+extern StaticTextPallete genericTextPal;
 
 APPFUNC(cmdHealthStar);
 
@@ -113,12 +108,6 @@ GameMode            PlayMode = {
 Alarm               frameAlarm;             // 10 fps frame rate
 
 /* ===================================================================== *
-   Display setup (move to another file later)
- * ===================================================================== */
-
-gPort               backPort;               // background port
-
-/* ===================================================================== *
    User controls
  * ===================================================================== */
 
@@ -135,7 +124,7 @@ ContainerView       *invContainer;          // TEST inventory container
 
 //  Drag and Drop variables
 
-gPixelMap           objPointerMap;          // bitmap for pointer
+static StaticPixelMap objPointerMap = {{0, 0}, nullptr};          // bitmap for pointer
 
 //  Resource handle for UI imagery
 
@@ -147,19 +136,19 @@ extern bool gameRunning;
 //	Initialize the Play mode
 
 bool checkTileAreaPort(void) {
-	if (gameRunning && tileDrawMap.data == nullptr) {
+	if (gameRunning && g_vm->_tileDrawMap.data == nullptr) {
 		//  Allocate back buffer for tile rendering
-		tileDrawMap.size.x = (kTileRectWidth + kTileWidth - 1) & ~kTileDXMask;
-		tileDrawMap.size.y = (kTileRectHeight + kTileWidth - 1) & ~kTileDXMask;
-		tileDrawMap.data = new uint8[tileDrawMap.bytes()]();
+		g_vm->_tileDrawMap.size.x = (kTileRectWidth + kTileWidth - 1) & ~kTileDXMask;
+		g_vm->_tileDrawMap.size.y = (kTileRectHeight + kTileWidth - 1) & ~kTileDXMask;
+		g_vm->_tileDrawMap.data = new uint8[g_vm->_tileDrawMap.bytes()]();
 	}
 
-	return tileDrawMap.data != nullptr;
+	return g_vm->_tileDrawMap.data != nullptr;
 }
 
 void clearTileAreaPort(void) {
-	if (gameRunning && tileDrawMap.data != nullptr) {
-		_FillRect(tileDrawMap.data, tileDrawMap.size.x, tileDrawMap.size.x, tileDrawMap.size.y, 0);
+	if (gameRunning && g_vm->_tileDrawMap.data != nullptr) {
+		_FillRect(g_vm->_tileDrawMap.data, g_vm->_tileDrawMap.size.x, g_vm->_tileDrawMap.size.x, g_vm->_tileDrawMap.size.y, 0);
 	}
 
 	Rect16 rect(0, 0, 640, 480);
@@ -180,7 +169,7 @@ void PlayModeSetup(void) {
 	}
 
 	//  Setup the drawing port for the background map
-	backPort.setMap(&tileDrawMap);
+	g_vm->_backPort.setMap(&g_vm->_tileDrawMap);
 
 	//  Allocate bitmap for drag & drop mouse pointer
 	objPointerMap.size.x = objPointerMap.size.y = 32;
@@ -281,9 +270,9 @@ void PlayModeCleanup(void) {
 	CleanupUserControls();
 
 	//  Deallocate back buffer for tile rendering
-	if (tileDrawMap.data) {
-		delete[] tileDrawMap.data;
-		tileDrawMap.data = nullptr;
+	if (g_vm->_tileDrawMap.data) {
+		delete[] g_vm->_tileDrawMap.data;
+		g_vm->_tileDrawMap.data = nullptr;
 	}
 
 	if (objPointerMap.data) {

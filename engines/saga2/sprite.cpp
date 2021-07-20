@@ -51,16 +51,8 @@ extern void drawTileMask(
     TilePoint loc,
     uint16 roofID = rippedRoofID);
 
-/* ===================================================================== *
-   Imports
- * ===================================================================== */
-
-extern gPixelMap    tileDrawMap;
-
 //  Color map ranges
 extern uint8        *ColorMapRanges;
-
-extern gPort        backPort;
 
 /* ===================================================================== *
    Exports
@@ -614,7 +606,7 @@ void ActorPose::load(Common::SeekableReadStream *stream) {
 	rightObjectOffset.load(stream);
 }
 
-void ActorPose::write(Common::OutSaveFile *out) {
+void ActorPose::write(Common::MemoryWriteStreamDynamic *out) {
 	out->writeUint16LE(flags);
 
 	out->writeByte(actorFrameIndex);
@@ -643,6 +635,13 @@ ColorSchemeList::ColorSchemeList(int count, Common::SeekableReadStream *stream) 
 	_schemes = (ColorScheme **)malloc(_count * sizeof(ColorScheme *));
 	for (int i = 0; i < _count; ++i)
 		_schemes[i] = new ColorScheme(stream);
+}
+
+ColorSchemeList::~ColorSchemeList() {
+	for (int i = 0; i < _count; ++i)
+		delete _schemes[i];
+
+	free(_schemes);
 }
 
 ActorAppearance *LoadActorAppearance(uint32 id, int16 banksNeeded) {
@@ -726,7 +725,7 @@ ActorAppearance *LoadActorAppearance(uint32 id, int16 banksNeeded) {
 		uint32 poseBytes = poseStream->size() - as->poseOffset;
 		const int poseSize = 14;
 
-		debugC(1, kDebugLoading, "Pose List: bytes: %d numAnimations: %d  poseOffset: %d calculated offset: %d numPoses: %d",
+		debugC(1, kDebugLoading, "Pose List: bytes: %ld numAnimations: %d  poseOffset: %d calculated offset: %d numPoses: %d",
 			poseStream->size(), as->numAnimations, as->poseOffset, 8 + as->numAnimations * 32, poseBytes / poseSize);
 
 		if (poseBytes % poseSize != 0)

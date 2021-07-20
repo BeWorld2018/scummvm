@@ -24,8 +24,6 @@
  *   (c) 1993-1996 The Wyrmkeep Entertainment Co.
  */
 
-#define FORBIDDEN_SYMBOL_ALLOW_ALL // FIXME: Remove
-
 #include "saga2/saga2.h"
 #include "saga2/blitters.h"
 #include "saga2/objects.h"
@@ -33,7 +31,6 @@
 #include "saga2/intrface.h"
 #include "saga2/grabinfo.h"
 #include "saga2/uidialog.h"
-#include "saga2/savefile.h"
 #include "saga2/motion.h"
 #include "saga2/enchant.h"
 #include "saga2/display.h"
@@ -49,7 +46,6 @@ namespace Saga2 {
  * ===================================================================== */
 extern ReadyContainerView   *TrioCviews[kNumViews];
 extern ReadyContainerView   *indivCviewTop, *indivCviewBot;
-extern PlayerActor          playerList[];   //  Master list of all PlayerActors
 extern gPanelList           *trioControls, *indivControls;
 extern gPanelList           *playControls;
 extern const uint32         imageGroupID;
@@ -383,7 +379,7 @@ static const StaticRect phiBtnRect = {531, 451, 44, 9};
 static const StaticRect kevBtnRect = {580, 451, 44, 9};
 
 
-textPallete genericTextPal(9 + 15, 20, 14, 11, 23, 17);
+StaticTextPallete genericTextPal = {9 + 15, 20, 14, 11, 23, 17};
 /*  uint8   dlPen;
     uint8   urPen;
     uint8   inPen;
@@ -448,6 +444,7 @@ CPlaqText::CPlaqText(gPanelList     &list,
 	buttonFont      = font;
 	textRect        = box;
 	textPosition    = textPos;
+	oldFont         = nullptr;
 }
 
 void CPlaqText::enable(bool abled) {
@@ -471,9 +468,9 @@ void CPlaqText::draw(void) {
 	port.setMode(drawModeMatte);
 	port.setFont(buttonFont);
 
-	pointer.hide(port, extent);              // hide mouse pointer
+	g_vm->_pointer->hide(port, extent);              // hide mouse pointer
 	drawClipped(port, Point16(0, 0), Rect16(0, 0, rect.width, rect.height));
-	pointer.show(port, extent);              // show mouse pointer
+	g_vm->_pointer->show(port, extent);              // show mouse pointer
 
 	// reset the old font
 	port.setFont(oldFont);
@@ -555,16 +552,6 @@ void CPortrait::ORset(uint16 brotherID, PortraitType type) { // brotherID = post
 	setPortrait(brotherID);
 }
 
-size_t appendToStr(char *dst, const char *src, size_t srcLen, size_t maxCpyLen) {
-	size_t      cpyLen;
-
-	cpyLen = MIN(srcLen, maxCpyLen);
-	memcpy(dst, src, cpyLen);
-	dst[cpyLen] = '\0';
-
-	return cpyLen;
-}
-
 void CPortrait::getStateString(char buf[], int8 size, uint16 brotherID) {
 	static char asleepStr[]         = ASLEEP_STATE;
 	static char paralysedStr[]      = PARALY_STATE;
@@ -581,7 +568,6 @@ void CPortrait::getStateString(char buf[], int8 size, uint16 brotherID) {
 	PlayerActor     *pa = getPlayerActorAddress(brotherID);
 	Actor           *a = pa->getActor();
 	ActorAttributes &stats = pa->getBaseStats();
-	size_t          length = 0;
 
 	buf[size - 1] = '\0';
 
@@ -593,96 +579,43 @@ void CPortrait::getStateString(char buf[], int8 size, uint16 brotherID) {
 	buf[0] = '\0';
 
 	if (a->enchantmentFlags & (1 << actorAsleep)) {
-		length +=   appendToStr(
-		                &buf[length],
-		                asleepStr,
-		                ARRAYSIZE(asleepStr) - 1,
-		                size - length - 1);
+		Common::strlcat(buf, asleepStr, size);
 	} else if (a->enchantmentFlags & (1 << actorParalyzed)) {
-		length +=   appendToStr(
-		                &buf[length],
-		                paralysedStr,
-		                ARRAYSIZE(paralysedStr) - 1,
-		                size - length - 1);
+		Common::strlcat(buf, paralysedStr, size);
 	} else if (a->enchantmentFlags & (1 << actorBlind)) {
-		length +=   appendToStr(
-		                &buf[length],
-		                blindStr,
-		                ARRAYSIZE(blindStr) - 1,
-		                size - length - 1);
+		Common::strlcat(buf, blindStr, size);
 	} else if (a->enchantmentFlags & (1 << actorFear)) {
-		length +=   appendToStr(
-		                &buf[length],
-		                afraidStr,
-		                ARRAYSIZE(afraidStr) - 1,
-		                size - length - 1);
+		Common::strlcat(buf, afraidStr, size);
 	} else if (pa->isAggressive()) {
-		length +=   appendToStr(
-		                &buf[length],
-		                angryStr,
-		                ARRAYSIZE(angryStr) - 1,
-		                size - length - 1);
+		Common::strlcat(buf, angryStr, size);
 	}
 
 	if (stats.vitality >= a->effectiveStats.vitality * 3) {
-		if (length != 0)
-			length +=   appendToStr(
-			                &buf[length],
-			                commaStr,
-			                ARRAYSIZE(commaStr) - 1,
-			                size - length - 1);
-		length +=   appendToStr(
-		                &buf[length],
-		                badlyWoundedStr,
-		                ARRAYSIZE(badlyWoundedStr) - 1,
-		                size - length - 1);
+		if (buf[0] != '\0')	// strlen(buf) > 0
+			Common::strlcat(buf, commaStr, size);
+
+		Common::strlcat(buf, badlyWoundedStr, size);
 	} else if (stats.vitality * 2 > a->effectiveStats.vitality * 3) {
-		if (length != 0)
-			length +=   appendToStr(
-			                &buf[length],
-			                commaStr,
-			                ARRAYSIZE(commaStr) - 1,
-			                size - length - 1);
-		length +=   appendToStr(
-		                &buf[length],
-		                hurtStr,
-		                ARRAYSIZE(hurtStr) - 1,
-		                size - length - 1);
+		if (buf[0] != '\0')	// strlen(buf) > 0
+			Common::strlcat(buf, commaStr, size);
+
+		Common::strlcat(buf, hurtStr, size);
 	}
 
 	if (a->enchantmentFlags & (1 << actorPoisoned)) {
-		if (length != 0)
-			length +=   appendToStr(
-			                &buf[length],
-			                commaStr,
-			                ARRAYSIZE(commaStr) - 1,
-			                size - length - 1);
-		length +=   appendToStr(
-		                &buf[length],
-		                poisonedStr,
-		                ARRAYSIZE(poisonedStr) - 1,
-		                size - length - 1);
+		if (buf[0] != '\0')	// strlen(buf) > 0
+			Common::strlcat(buf, commaStr, size);
+
+		Common::strlcat(buf, poisonedStr, size);
 	} else if (a->enchantmentFlags & (1 << actorDiseased)) {
-		if (length != 0)
-			length +=   appendToStr(
-			                &buf[length],
-			                commaStr,
-			                ARRAYSIZE(commaStr) - 1,
-			                size - length - 1);
-		length +=   appendToStr(
-		                &buf[length],
-		                diseasedStr,
-		                ARRAYSIZE(diseasedStr) - 1,
-		                size - length - 1);
+		if (buf[0] != '\0')	// strlen(buf) > 0
+			Common::strlcat(buf, commaStr, size);
+
+		Common::strlcat(buf, diseasedStr, size);
 	}
 
-	if (length == 0) {
-		length +=   appendToStr(
-		                &buf[length],
-		                normalStr,
-		                ARRAYSIZE(normalStr) - 1,
-		                size - length - 1);
-	}
+	if (buf[0] == '\0')	// strlen(buf) == 0
+		Common::strlcat(buf, normalStr, size);
 }
 
 /* ===================================================================== *
@@ -695,20 +628,21 @@ CStatusLine::CStatusLine(gPanelList         &list,
                          const char            *msg,
                          gFont           *font,
                          int16           textPos,
-                         textPallete     &pal,
+                         textPallete     pal,
                          int32           /*frameTime*/,
                          int16           ident,
                          AppFunc         *cmd) :
-	CPlaqText(list, box, msg, font, textPos, pal, ident, cmd)
-
-{
-	int         i;
+	CPlaqText(list, box, msg, font, textPos, pal, ident, cmd) {
 
 	lineDisplayed = false;
 	queueHead = queueTail = 0;
 
-	for (i = 0; i < ARRAYSIZE(lineQueue); i++)
+	for (int i = 0; i < ARRAYSIZE(lineQueue); i++) {
 		lineQueue[i].text = nullptr;
+		lineQueue[i].frameTime = 0;
+	}
+	waitAlarm.basetime = waitAlarm.duration = 0;
+	minWaitAlarm.basetime = minWaitAlarm.duration = 0;
 }
 
 CStatusLine::~CStatusLine(void) {
@@ -777,11 +711,6 @@ void CStatusLine::clear(void) {
 
 	queueHead = queueTail = 0;
 }
-
-/* ===================================================================== *
-    CMassWeightInterface: Static list of indicators
- * ===================================================================== */
-Common::List<CMassWeightIndicator *> CMassWeightIndicator::indList;
 
 /* ===================================================================== *
     CMassWeightInterface: mass and weight allowence indicators
@@ -859,11 +788,11 @@ CMassWeightIndicator::CMassWeightIndicator(gPanelList *panel, const Point16 &pos
 		containerObject = nullptr;
 	}
 
-	indList.push_back(this);
+	g_vm->_indList.push_back(this);
 }
 
 CMassWeightIndicator::~CMassWeightIndicator(void) {
-	indList.remove(this);
+	g_vm->_indList.remove(this);
 
 	unloadImageRes(pieIndImag, numPieIndImages);
 	g_vm->_imageCache->releaseImage(massBulkImag);
@@ -887,8 +816,8 @@ void CMassWeightIndicator::recalculate(void) {
 		setMassPie(retMass = getWeightRatio(containerObject, mass, false));
 		setBulkPie(retBulk = getBulkRatio(containerObject, bulk, false));
 	} else {
-		setMassPie(retMass = getWeightRatio(playerList[getCenterActorPlayerID()].getActor(), mass, false));
-		setBulkPie(retBulk = getBulkRatio(playerList[getCenterActorPlayerID()].getActor(), bulk, false));
+		setMassPie(retMass = getWeightRatio(g_vm->_playerList[getCenterActorPlayerID()]->getActor(), mass, false));
+		setBulkPie(retBulk = getBulkRatio(g_vm->_playerList[getCenterActorPlayerID()]->getActor(), bulk, false));
 	}
 }
 
@@ -899,7 +828,7 @@ void CMassWeightIndicator::recalculate(void) {
 **/
 void CMassWeightIndicator::update(void) {
 	if (bRedraw == true) {
-		for (Common::List<CMassWeightIndicator *>::iterator it = indList.begin(); it != indList.end(); ++it) {
+		for (Common::List<CMassWeightIndicator *>::iterator it = g_vm->_indList.begin(); it != g_vm->_indList.end(); ++it) {
 			(*it)->recalculate();
 			(*it)->invalidate();
 		}
@@ -1039,9 +968,9 @@ void CManaIndicator::draw(void) {
 	// setup the port
 	port.setMode(drawModeMatte);
 
-	pointer.hide(port, extent);              // hide mouse pointer
+	g_vm->_pointer->hide(port, extent);              // hide mouse pointer
 	drawClipped(port, Point16(0, 0), Rect16(0, 0, xSize, ySize));
-	pointer.show(port, extent);              // show mouse pointer
+	g_vm->_pointer->show(port, extent);              // show mouse pointer
 
 
 }
@@ -1054,7 +983,7 @@ void CManaIndicator::drawClipped(gPort &port,
 
 	// Do an update to the mana star info if needed,
 	// if not, do not draw stuff
-	calcDraw = update(&playerList[getCenterActorPlayerID()]);
+	calcDraw = update(g_vm->_playerList[getCenterActorPlayerID()]);
 
 	if (!calcDraw) {
 		if (!extent.overlap(clipRect)) return;
@@ -1073,7 +1002,7 @@ void CManaIndicator::drawClipped(gPort &port,
 	}
 
 	// otherwise continue with the update
-	pointer.hide();
+	g_vm->_pointer->hide();
 
 	// create a temporary gPort to blit stuff to
 	gPort       tempPort;
@@ -1193,7 +1122,7 @@ void CManaIndicator::drawClipped(gPort &port,
 	if (tempMap.data)
 		delete[] tempMap.data;
 
-	pointer.show();
+	g_vm->_pointer->show();
 }
 
 bool CManaIndicator::needUpdate(PlayerActor *player) {
@@ -1423,16 +1352,16 @@ void CHealthIndicator::updateStar(gCompImage *starCtl, int32 bro, int32 baseVita
 void CHealthIndicator::update(void) {
 	if (indivControlsFlag) {
 		// get the stats for the selected brother
-		int16 baseVitality  = playerList[translatePanID(uiIndiv)].getBaseStats().vitality;
-		int16 currVitality  = playerList[translatePanID(uiIndiv)].getEffStats()->vitality;
+		int16 baseVitality  = g_vm->_playerList[translatePanID(uiIndiv)]->getBaseStats().vitality;
+		int16 currVitality  = g_vm->_playerList[translatePanID(uiIndiv)]->getEffStats()->vitality;
 
 		updateStar(indivStarBtn, uiIndiv, baseVitality, currVitality);
 	} else {
 
 		for (uint16 i = 0; i < numControls; i++) {
 			// get the stats for the selected brother
-			int16 baseVitality  = playerList[i].getBaseStats().vitality;
-			int16 currVitality  = playerList[i].getEffStats()->vitality;
+			int16 baseVitality  = g_vm->_playerList[i]->getBaseStats().vitality;
+			int16 currVitality  = g_vm->_playerList[i]->getEffStats()->vitality;
 
 			updateStar(starBtns[i], i, baseVitality, currVitality);
 		}
@@ -1839,7 +1768,7 @@ void updateIndicators(void) {
 
 	// mana indicator update check
 	if (isIndivMode()) {
-		if (ManaIndicator->needUpdate(&playerList[getCenterActorPlayerID()])) {
+		if (ManaIndicator->needUpdate(g_vm->_playerList[getCenterActorPlayerID()])) {
 			// redraw the region that is not covered by any other window
 			ManaIndicator->invalidate();
 		}
@@ -1956,7 +1885,8 @@ void setIndivBtns(uint16 brotherID) {    // top = 0, mid = 1, bot = 2
 	setEnchantmentDisplay();
 
 	// point the read containers to the correct brother
-	if (brotherID > playerActors) brotherID = playerActors;
+	if (brotherID >= kPlayerActors)
+		brotherID = kPlayerActors - 1;
 
 	indivCviewTop->setContainer(GameObject::objectAddress(ActorBaseID + brotherID));
 	indivCviewTop->ghost(TrioCviews[brotherID]->isGhosted());
@@ -1966,7 +1896,7 @@ void setIndivBtns(uint16 brotherID) {    // top = 0, mid = 1, bot = 2
 	// now set the indicators for mass and bulk
 	uint16 pieWeightRatio   = MassWeightIndicator->getMassPieDiv();
 	uint16 pieBulkRatio     = MassWeightIndicator->getBulkPieDiv();
-	PlayerActor *brother    = &playerList[brotherID];
+	PlayerActor *brother    = g_vm->_playerList[brotherID];
 
 	MassWeightIndicator->setMassPie(getWeightRatio(brother->getActor(), pieWeightRatio, false));
 	MassWeightIndicator->setBulkPie(getBulkRatio(brother->getActor(), pieBulkRatio, false));
@@ -2013,7 +1943,7 @@ void setCenterBrother(uint16 whichBrother) {
 	g_vm->_mouseInfo->replaceObject();
 
 	// set the new center actor
-	setCenterActor(&playerList[whichBrother]);
+	setCenterActor(g_vm->_playerList[whichBrother]);
 }
 
 uint16 translatePanID(uint16 panID) {
@@ -2281,7 +2211,7 @@ void toggleAgression(PlayerActorID bro, bool all) {
 	int16   wasAggressive = isAggressive(bro);
 
 	if (all) {
-		for (int i = 0; i < playerActors; i++)
+		for (int i = 0; i < kPlayerActors; i++)
 			setAggression(i, !wasAggressive);
 	} else setAggression(bro, !wasAggressive);
 }
@@ -2297,7 +2227,7 @@ APPFUNC(cmdAggressive) {
 
 //		if (rightButtonState())
 //		{
-//			for (int i = 0; i < playerActors; i++)
+//			for (int i = 0; i < kPlayerActors; i++)
 //				setAggression( i, !wasAggressive );
 //		}
 //		else setAggression( transBroID, !wasAggressive );
@@ -2363,7 +2293,7 @@ APPFUNC(cmdCenter) {
 
 	if (ev.eventType == gEventNewValue) {
 		if (rightButtonState())
-			setCenterBrother((transBroID + 1) % playerActors);
+			setCenterBrother((transBroID + 1) % kPlayerActors);
 		else setCenterBrother(transBroID);
 	}
 	if (ev.eventType == gEventMouseMove) {
@@ -2382,7 +2312,7 @@ void toggleBanding(PlayerActorID bro, bool all) {
 	int16   wasBanded = isBanded(bro);
 
 	if (all) {
-		for (int i = 0; i < playerActors; i++)
+		for (int i = 0; i < kPlayerActors; i++)
 			setBanded(i, !wasBanded);
 	} else setBanded(bro, !wasBanded);
 }
@@ -2396,7 +2326,7 @@ APPFUNC(cmdBand) {
 //
 //		if (rightButtonState())
 //		{
-//			for (int i = 0; i < playerActors; i++)
+//			for (int i = 0; i < kPlayerActors; i++)
 //				setBanded( i, !wasBanded );
 //		}
 //		else setBanded( transBroID, !wasBanded );
@@ -2478,8 +2408,8 @@ APPFUNC(cmdHealthStar) {
 		}
 
 		// get the stats for the selected brother
-		int16 baseVitality = playerList[transBroID].getBaseStats().vitality;
-		int16 currVitality = playerList[transBroID].getEffStats()->vitality;
+		int16 baseVitality = g_vm->_playerList[transBroID]->getBaseStats().vitality;
+		int16 currVitality = g_vm->_playerList[transBroID]->getEffStats()->vitality;
 
 		char buf[40];
 
@@ -2507,7 +2437,7 @@ APPFUNC(cmdMassInd) {
 			if (ev.panel->id > 1) {
 				containerObject = (GameObject *)win->userData;
 			} else {
-				containerObject = (GameObject *)playerList[getCenterActorPlayerID()].getActor();
+				containerObject = (GameObject *)g_vm->_playerList[getCenterActorPlayerID()]->getActor();
 			}
 
 			assert(containerObject);
@@ -2545,7 +2475,7 @@ APPFUNC(cmdBulkInd) {
 			if (ev.panel->id > 1) {
 				containerObject = (GameObject *)win->userData;
 			} else {
-				containerObject = (GameObject *)playerList[getCenterActorPlayerID()].getActor();
+				containerObject = (GameObject *)g_vm->_playerList[getCenterActorPlayerID()]->getActor();
 			}
 
 			assert(containerObject);
@@ -2572,7 +2502,7 @@ APPFUNC(cmdManaInd) {
 			int     numManaRegions = ManaIndicator->getNumManaRegions();
 			int     i;
 			int     curMana = 0, baseMana = 0;
-			PlayerActor *player             = &playerList[getCenterActorPlayerID()];
+			PlayerActor *player             = g_vm->_playerList[getCenterActorPlayerID()];
 			ActorAttributes *stats          = player->getEffStats();
 			ActorAttributes baseStatsRef    = player->getBaseStats();
 			Point16 pos = ev.mouse;
@@ -2636,11 +2566,6 @@ APPFUNC(cmdManaInd) {
 	}
 }
 
-struct UIStateArchive {
-	bool    indivControlsFlag;
-	uint16  indivBrother;
-};
-
 bool isIndivMode(void) {
 	return indivControlsFlag;
 }
@@ -2652,25 +2577,28 @@ void initUIState(void) {
 	//updateAllUserControls();
 }
 
-void saveUIState(SaveFileConstructor &saveGame) {
-	UIStateArchive      archive;
+void saveUIState(Common::OutSaveFile *outS) {
+	debugC(2, kDebugSaveload, "Saving UIState");
 
-	archive.indivControlsFlag = indivControlsFlag;
-	archive.indivBrother = indivBrother;
+	outS->write("UIST", 4);
 
-	saveGame.writeChunk(
-	    MakeID('U', 'I', 'S', 'T'),
-	    &archive,
-	    sizeof(archive));
+	CHUNK_BEGIN;
+	out->writeUint16LE(indivControlsFlag);
+	out->writeUint16LE(indivBrother);
+	CHUNK_END;
+
+	debugC(3, kDebugSaveload, "... indivControlsFlag = %d", indivControlsFlag);
+	debugC(3, kDebugSaveload, "... indivBrother = %d", indivBrother);
 }
 
-void loadUIState(SaveFileReader &saveGame) {
-	UIStateArchive      archive;
+void loadUIState(Common::InSaveFile *in) {
+	debugC(2, kDebugSaveload, "Loading UIState");
 
-	saveGame.read(&archive, sizeof(archive));
+	indivControlsFlag = in->readUint16LE();
+	indivBrother = in->readUint16LE();
 
-	indivControlsFlag = archive.indivControlsFlag;
-	indivBrother = archive.indivBrother;
+	debugC(3, kDebugSaveload, "... indivControlsFlag = %d", indivControlsFlag);
+	debugC(3, kDebugSaveload, "... indivBrother = %d", indivBrother);
 
 	updateAllUserControls();
 }
@@ -2681,7 +2609,7 @@ void cleanupUIState(void) {
 }
 
 void gArmorIndicator::setValue(PlayerActorID brotherID) {
-	Actor *bro = playerList[brotherID].getActor();
+	Actor *bro = g_vm->_playerList[brotherID]->getActor();
 	bro->totalArmorAttributes(attr);
 	invalidate();
 }
@@ -2786,7 +2714,7 @@ void gEnchantmentDisplay::pointerMove(gPanelMessage &msg) {
 }
 
 void gEnchantmentDisplay::setValue(PlayerActorID pID) {
-	Actor           *a = playerList[pID].getActor();
+	Actor           *a = g_vm->_playerList[pID]->getActor();
 	uint8           newIconFlags[iconCount];
 	EnchantmentIterator iter(a);
 	ContainerIterator   cIter(a);

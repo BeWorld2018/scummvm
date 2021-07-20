@@ -35,12 +35,11 @@
 
 namespace Saga2 {
 
-const uint16 tileBankCount = 25;
+const uint16 tileBankCount = 64;
 
 const uint32 tileImageID = MKTAG('T', 'I', 'L',  0);
 
 
-extern gPixelMap            tileDrawMap;
 extern int16                currentMapNum;
 extern hResource           *objResFile;
 extern hResContext          *tileRes;       // tile resource handle
@@ -52,31 +51,16 @@ static byte *tileResLoad(hResID i, bool asynch = false) {
 		return nullptr;
 }
 
-HandleArray tileImageBanks(64, tileResLoad, tileImageID);
-
-void initTileBank(int16 bankNum) {
-}
-
-void RHeapsAMess(void);
-
 void freeAllTileBanks(void) {
-	tileImageBanks.flush();
-}
-
-void unlockAllTileBanks(void) {
-	tileImageBanks.flush();
-}
-
-void freeTileBank(int16) {
+	g_vm->_tileImageBanks->flush();
 }
 
 void updateHandleRefs(const TilePoint &) { //, StandingTileInfo *stiResult )
-	tileImageBanks.flush();
+	g_vm->_tileImageBanks->flush();
 }
 
 void initTileBanks(void) {
-	for (int16 i = 0; i < tileBankCount; i++)
-		initTileBank(i);
+	g_vm->_tileImageBanks = new HandleArray(tileBankCount, tileResLoad, tileImageID);
 }
 
 void drawPlatform(
@@ -85,8 +69,8 @@ void drawPlatform(
     int16           uOrg,                   // for TAG search
     int16           vOrg) {                 // for TAG search
 
-	int16           right = tileDrawMap.size.x,
-	                bottom = tileDrawMap.size.y;
+	int16           right = g_vm->_tileDrawMap.size.x,
+	                bottom = g_vm->_tileDrawMap.size.y;
 
 	Point16         tilePos;
 
@@ -143,7 +127,7 @@ void drawPlatform(
 					int16 y = tilePos.y - h;
 
 					if (ti->attrs.height > 0 && y < bottom + ti->attrs.height - 1) {
-						drawTile(&tileDrawMap, tilePos.x, y, ti->attrs.height, imageData);
+						drawTile(&g_vm->_tileDrawMap, tilePos.x, y, ti->attrs.height, imageData);
 					}
 				}
 			}

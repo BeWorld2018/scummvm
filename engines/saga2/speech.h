@@ -36,8 +36,8 @@ namespace Saga2 {
 #define CHARSPERSECOND  22
 #define SHORTEST_DURATION   TICKSPERSECOND
 
-extern  gPort       backPort;
 void    TileToScreenCoords(const TilePoint &tp, Point16 &p);
+void    TileToScreenCoords(const TilePoint &tp, StaticPoint16 &p);
 void    updateSpeech();
 extern  TilePoint centerActorCoords(void);
 bool    isVisible(GameObject *obj);
@@ -59,13 +59,6 @@ bool sayVoice(uint32 s[]);
 
 //  REM: This function is no longer used by the speech code,
 //  but it may be useful for other things.
-
-int16 TextWrap(
-    char            *lines[],
-    int16           line_chars[],
-    int16           line_pixels[],
-    char            *text,                  // the text to render
-    int16           width);                 // width to constrain text
 
 extern int16        speechButtonCount;      // count of speech buttons
 
@@ -108,10 +101,12 @@ private:
 
 public:
 	int16               selectedButton;     // which button was hit
+	gPixelMap           _speechImage;
+	gPort               _textPort;
 
 private:
 	//  Reconstruct this SpeechTask from an archive buffer
-	void *restore(void *buf);
+	void read(Common::InSaveFile *in);
 
 	//  Return the number of bytes needed to archive this SpeechTask
 	int32 archiveSize(void);
@@ -119,11 +114,13 @@ private:
 	//  Archive this SpeechTask in a buffer
 	void *archive(void *buf);
 
+	void write(Common::MemoryWriteStreamDynamic *out);
+
 	bool setupActive(void);                  // render speech into temp image
 	bool displayText(void);
 	int16 fits(int16 space);
 	void setWidth(void);
-	bool calcPosition(Point16 &p);       // calculate position
+	bool calcPosition(StaticPoint16 &p);       // calculate position
 	void remove(void);                   //  Remove from active list
 
 public:
@@ -185,11 +182,15 @@ public:
 	//  Constructor -- reconstruct from archive buffer
 	SpeechTaskList(void **buf);
 
+	SpeechTaskList(Common::InSaveFile *in);
+
 	//  Return the number of bytes needed to archive the speech tasks
 	int32 archiveSize(void);
 
 	//  Create an archive of the speech tasks in an archive buffer
 	void *archive(void *buf);
+
+	void write(Common::MemoryWriteStreamDynamic *out);
 
 	//  Cleanup the speech tasks
 	void cleanup(void);
@@ -224,10 +225,8 @@ extern SpeechTaskList &speechList;
 void initSpeechTasks(void);
 
 //  Save the speech tasks in a save file
-void saveSpeechTasks(SaveFileConstructor &saveGame);
-
-//  Load the speech tasks from a save file
-void loadSpeechTasks(SaveFileReader &saveGame);
+void saveSpeechTasks(Common::OutSaveFile *outS);
+void loadSpeechTasks(Common::InSaveFile *in, int32 chunkSize);
 
 //  Cleanup the speech task list
 void cleanupSpeechTasks(void);

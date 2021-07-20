@@ -42,6 +42,8 @@ hResContext::hResContext() {
 	_parent = nullptr;
 	_numEntries = 0;
 	_handle = &_file;
+	_res = nullptr;
+	_bytecount = _bytepos = 0;
 }
 
 hResContext::hResContext(hResContext *sire, hResID id, const char desc[]) {
@@ -54,6 +56,8 @@ hResContext::hResContext(hResContext *sire, hResID id, const char desc[]) {
 	_bytecount = 0;
 	_bytepos = 0;
 	_handle = &_file;
+	_base = nullptr;
+	_parent = 0;
 
 	if (!_res->_valid)
 		return;
@@ -334,6 +338,8 @@ hResource::hResource(const char *resname, const char desc[]) {
 	_valid = false;
 	_base = nullptr;
 	_parent = nullptr;
+	_table = nullptr;
+	_firstGroupOffset = 0;
 	_numEntries = 0;
 	_filename = resname;
 
@@ -358,7 +364,6 @@ hResource::hResource(const char *resname, const char desc[]) {
 
 	if (_base == nullptr || _table == nullptr)
 		return;
-
 
 	debugC(1, kDebugResources, "Reading %d entries:", _numEntries);
 	for (int i = 0; i < _numEntries; ++i)

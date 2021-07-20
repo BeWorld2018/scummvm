@@ -33,10 +33,18 @@
 #include "engines/util.h"
 
 #include "saga2/saga2.h"
+#include "saga2/fta.h"
 
-#include "saga2/gdraw.h"
-#include "saga2/mouseimg.h"
+#include "saga2/band.h"
+#include "saga2/beegee.h"
 #include "saga2/contain.h"
+#include "saga2/dispnode.h"
+#include "saga2/gdraw.h"
+#include "saga2/imagcach.h"
+#include "saga2/mouseimg.h"
+#include "saga2/motion.h"
+#include "saga2/panel.h"
+#include "saga2/spelshow.h"
 
 namespace Saga2 {
 
@@ -53,8 +61,8 @@ Saga2Engine::Saga2Engine(OSystem *syst)
 
 	g_vm = this;
 
+	_console = nullptr;
 	_bandList = nullptr;
-	_imageCache = nullptr;
 	_mouseInfo = nullptr;
 	_smkDecoder = nullptr;
 	_videoX = _videoY = 0;
@@ -64,12 +72,34 @@ Saga2Engine::Saga2Engine(OSystem *syst)
 	_autoWeapon = true;
 	_showNight = true;
 	_speechText = true;
+	_showPosition = false;
 
 	SearchMan.addSubDirectoryMatching(gameDataDir, "res");
 	SearchMan.addSubDirectoryMatching(gameDataDir, "dos/drivers"); // For Miles Sound files
 	SearchMan.addSubDirectoryMatching(gameDataDir, "drivers");
 
 	_loadedWeapons = 0;
+
+	_imageCache = new CImageCache;
+	_mTaskList = new MotionTaskList;
+	_bandList = new BandList();
+	_mainDisplayList = new DisplayNodeList;
+	_activeSpells = new SpellDisplayList(kMaxActiveSpells);
+	_pointer = new gMousePointer(_mainPort);
+	_activeRegionList = new ActiveRegion[kPlayerActors];
+	_toolBase = new gToolBase;
+	_properties = new Properties;
+	_aTaskList = new TileActivityTaskList;
+	_grandMasterFTA = new Deejay;
+
+	_edpList = nullptr;
+	_sdpList = nullptr;
+	_containerList = nullptr;
+	_tileImageBanks = nullptr;
+	_stackList = nullptr;
+	_taskList = nullptr;
+	_frate = nullptr;
+	_lrate = nullptr;
 }
 
 Saga2Engine::~Saga2Engine() {
@@ -79,6 +109,17 @@ Saga2Engine::~Saga2Engine() {
 
 	// Dispose your resources here
 	delete _rnd;
+	delete _imageCache;
+	delete _mTaskList;
+	delete _bandList;
+	delete _mainDisplayList;
+	delete _activeSpells;
+	delete _pointer;
+	delete[] _activeRegionList;
+	delete _toolBase;
+	delete _properties;
+	delete _aTaskList;
+	delete _grandMasterFTA;
 }
 
 Common::Error Saga2Engine::run() {
@@ -86,6 +127,9 @@ Common::Error Saga2Engine::run() {
 	initGraphics(640, 480);
 
 	_containerList = new ContainerList;
+
+	_console = new Console(this);
+	setDebugger(_console);
 
 	readConfig();
 
@@ -112,6 +156,41 @@ Common::Error Saga2Engine::loadGameStream(Common::SeekableReadStream *stream) {
 Common::Error Saga2Engine::saveGameStream(Common::WriteStream *stream, bool isAutosave) {
 	Common::Serializer s(nullptr, stream);
 	syncGameStream(s);
+	return Common::kNoError;
+}
+
+Common::String Saga2Engine::getSavegameFile(int slot) {
+	return getMetaEngine()->getSavegameFile(slot, _targetName.c_str());
+}
+
+Common::Error Saga2Engine::saveGameState(int slot, const Common::String &desc, bool isAutosave) {
+	pauseTimer();
+
+	Common::OutSaveFile *outS = getSaveFileManager()->openForSaving(getSavegameFile(slot), false);
+	if (!outS)
+		return Common::kCreatingFileFailed;
+
+	saveGame(outS, desc);
+
+	outS->write("SCVM", 4);
+	CHUNK_BEGIN;
+	uint32 pos = outS->pos() + 4;
+
+	getMetaEngine()->appendExtendedSaveToStream(out, g_vm->getTotalPlayTime() / 1000, desc, false, pos);
+	CHUNK_END;
+
+	outS->finalize();
+
+	delete outS;
+
+	resumeTimer();
+
+	return Common::kNoError;
+}
+
+Common::Error Saga2Engine::loadGameState(int slot) {
+	loadSavedGameState(slot);
+
 	return Common::kNoError;
 }
 

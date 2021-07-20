@@ -449,8 +449,9 @@ public:
 	static int32 archiveSize(void) {
 		return sizeof(Archive);
 	}
-	void *restore(void *buf);
-	void *archive(void *buf);
+
+	void read(Common::InSaveFile *in);
+	void write(Common::MemoryWriteStreamDynamic *out);
 
 	//  Hide or show this container window.
 	void hide(void);
@@ -541,8 +542,8 @@ void initContainers(void);
 void cleanupContainers(void);
 
 void initContainerNodes(void);
-void saveContainerNodes(SaveFileConstructor &saveGame);
-void loadContainerNodes(SaveFileReader &saveGame);
+void saveContainerNodes(Common::OutSaveFile *outS);
+void loadContainerNodes(Common::InSaveFile *in);
 void cleanupContainerNodes(void);
 
 extern void updateContainerWindows(void);

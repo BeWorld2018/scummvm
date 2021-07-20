@@ -494,8 +494,12 @@ int Actor::calcMovementFactor(const Common::Point& next) {
 
 		_v3stepX = ((ABS(diffY) / (int)_speedy) >> 1) > (ABS(diffX) / (int)_speedx) ? _speedy + 1 : _speedx;
 		_v3stepThreshold = MAX(ABS(diffY) / _speedy, ABS(diffX) / _v3stepX);
-		deltaXFactor = diffX < 0 ? -_v3stepX : _v3stepX;
-		deltaYFactor = diffY < 0 ? -_speedy : _speedy;
+		deltaXFactor = (int32)_v3stepX;
+		if (diffX < 0)
+			deltaXFactor = -deltaXFactor;
+		deltaYFactor = (int32)_speedy;
+		if (diffY < 0)
+			deltaYFactor = -deltaYFactor;
 		_walkdata.xfrac = _walkdata.v3XAdd = diffX / deltaXFactor;
 		_walkdata.yfrac = _walkdata.v3YAdd = diffY / deltaYFactor;
 	} else {
@@ -3739,6 +3743,28 @@ void Actor::saveLoadWithSerializer(Common::Serializer &s) {
 		}
 
 		setDirection(_facing);
+	}
+
+	if (_vm->_game.version == 3) {
+		if (s.isLoading() && s.getVersion() < VER(101)) {
+			int diffX = _walkdata.next.x - _pos.x;
+			int diffY = _walkdata.next.y - _pos.y;
+			_v3stepX = ((ABS(diffY) / (int)_speedy) >> 1) >(ABS(diffX) / (int)_speedx) ? _speedy + 1 : _speedx;
+			_v3stepThreshold = MAX(ABS(diffY) / _speedy, ABS(diffX) / _v3stepX);
+			_walkdata.deltaXFactor = (int32)_v3stepX;
+			if (diffX < 0)
+				_walkdata.deltaXFactor = -_walkdata.deltaXFactor;
+			_walkdata.deltaYFactor = (int32)_speedy;
+			if (diffY < 0)
+				_walkdata.deltaYFactor = -_walkdata.deltaYFactor;
+			_walkdata.xfrac = _walkdata.v3XAdd = diffX / _walkdata.deltaXFactor;
+			_walkdata.yfrac = _walkdata.v3YAdd = diffY / _walkdata.deltaYFactor;
+		} else {
+			s.syncAsUint16LE(_walkdata.v3XAdd, VER(101));
+			s.syncAsUint16LE(_walkdata.v3YAdd, VER(101));
+			s.syncAsUint16LE(_v3stepX, VER(101));
+			s.syncAsUint16LE(_v3stepThreshold, VER(101));
+		}
 	}
 }
 

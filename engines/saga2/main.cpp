@@ -24,8 +24,6 @@
  *   (c) 1993-1996 The Wyrmkeep Entertainment Co.
  */
 
-#define FORBIDDEN_SYMBOL_ALLOW_ALL // FIXME: Remove
-
 #include "common/debug.h"
 #include "common/events.h"
 #include "common/memstream.h"
@@ -43,10 +41,9 @@
 #include "saga2/display.h"
 #include "saga2/tower.h"
 #include "saga2/tromode.h"
-#include "saga2/loadsave.h"
+#include "saga2/saveload.h"
 #include "saga2/gamerate.h"
 #include "saga2/msgbox.h"
-#include "saga2/savefile.h"
 
 namespace Saga2 {
 
@@ -57,13 +54,11 @@ namespace Saga2 {
 // enable the following to display event loop processing
 #define DEBUG_LOOP 0
 
-extern gToolBase        G_BASE;
 extern char            *gameTimeStr;
 extern bool             underground;
 extern char             commandLineHelp[];
 extern hResContext     *tileRes;       // tile resource handle
 extern hResContext     *listRes;
-extern vDisplayPage     protoPage;
 
 /* ===================================================================== *
    Globals
@@ -76,11 +71,7 @@ bool cliSpeechText      = false;
 bool cliDrawInv         = false;
 uint32 cliMemory        = 0;
 
-//  User-interface variables
-gMouseState             mouseState;
-
 //  Display variables
-gMousePointer           pointer(g_vm->_mainPort);   // the actual pointer
 BackWindow              *mainWindow;            // main window...
 
 //  Memory allocation heap
@@ -137,17 +128,6 @@ static pMessager Status2[10];
 
 pMessager ratemess[3];
 
-#if 1
-frameSmoother frate(frameRate, TICKSPERSECOND, gameTime);
-//frameSmoother lrate(frameRate,TICKSPERSECOND,gameTime);
-frameCounter lrate(TICKSPERSECOND, gameTime);
-frameCounter irate(TICKSPERSECOND, gameTime);
-#else
-frameCounter frate(TICKSPERSECOND, gameTime);
-frameCounter lrate(TICKSPERSECOND, gameTime);
-frameCounter irate(TICKSPERSECOND, gameTime);
-#endif
-
 /* ===================================================================== *
    Prototypes
  * ===================================================================== */
@@ -179,6 +159,7 @@ int16 OptionsDialog(bool disableSaveResume = false);
 
 static void mainLoop(bool &cleanExit, int argc, char *argv[]);
 void displayUpdate(void);
+void showDebugMessages();
 
 bool initResourceHandles();
 bool initDisplayPort();
@@ -249,6 +230,9 @@ static void mainLoop(bool &cleanExit_, int argc, char *argv[]) {
 // Game setup function
 
 bool setupGame(void) {
+	g_vm->_frate = new frameSmoother(frameRate, TICKSPERSECOND, gameTime);
+	g_vm->_lrate = new frameCounter(TICKSPERSECOND, gameTime);
+
 	return programInit();
 }
 
@@ -256,6 +240,9 @@ bool setupGame(void) {
 // Game cleanup function
 
 void cleanupGame(void) {
+	delete g_vm->_frate;
+	delete g_vm->_lrate;
+
 	programTerm();
 }
 
@@ -285,7 +272,6 @@ void dumpGBASE(char *msg);
 void processEventLoop(bool updateScreen) {
 
 	debugC(1, kDebugEventLoop, "EventLoop: starting event loop");
-	irate.updateFrameCount();
 
 	if (checkExit && verifyUserExit()) {
 		//gameRunning=false;
@@ -308,10 +294,10 @@ void processEventLoop(bool updateScreen) {
 		case Common::EVENT_LBUTTONUP:
 		case Common::EVENT_RBUTTONUP:
 		case Common::EVENT_MOUSEMOVE:
-			G_BASE.handleMouse(event, g_system->getMillis());
+			g_vm->_toolBase->handleMouse(event, g_system->getMillis());
 			break;
 		case Common::EVENT_KEYDOWN:
-			G_BASE.handleKeyStroke(event);
+			g_vm->_toolBase->handleKeyStroke(event);
 			break;
 		case Common::EVENT_QUIT:
 			if (verifyUserExit())
@@ -326,7 +312,7 @@ void processEventLoop(bool updateScreen) {
 	debugC(1, kDebugEventLoop, "EventLoop: timer update");
 	//  Handle the timer events
 	//  REM: Causing code corruption in windows for some reason...
-	G_BASE.handleTimerTick(gameTime >> 2);
+	g_vm->_toolBase->handleTimerTick(gameTime >> 2);
 
 	//  Handle updating of the display.
 	debugC(1, kDebugEventLoop, "EventLoop: display update");
@@ -346,7 +332,7 @@ void displayUpdate(void) {
 		dayNightUpdate();
 		//debugC(1, kDebugEventLoop, "EventLoop: Game mode handle task");
 		GameMode::modeStackPtr[GameMode::modeStackCtr - 1]->handleTask();
-		lrate.updateFrameCount();
+		g_vm->_lrate->updateFrameCount();
 		loops++;
 		elapsed += (gameTime - lastGameTime);
 		lastGameTime = gameTime;
@@ -367,6 +353,15 @@ void displayUpdate(void) {
 		//  Call the asynchronous path finder
 		debugC(1, kDebugEventLoop, "EventLoop: pathfinder update");
 		runPathFinder();
+
+		showDebugMessages();
+	}
+}
+
+void showDebugMessages() {
+	if (g_vm->_showPosition) {
+		TilePoint p = centerActorCoords();
+		WriteStatusF2(0, "Position: %d, %d, %d", p.u, p.v, p.z);
 	}
 }
 
@@ -428,19 +423,6 @@ bool readCommandLine(int argc, char *argv[]) {
 /* MOUSE EVENT QUEUE                                                */
 /*                                                                  */
 /********************************************************************/
-
-// ------------------------------------------------------------------------
-// Mouse handling
-
-gMouseState     prevState;
-MouseExtState   mouseQueue[64];
-
-int16           queueIn = 0,
-                queueOut = 0;
-
-inline int BUMP(int x) {
-	return (x + 1) & 63;
-}
 
 // ------------------------------------------------------------------------
 // clears any queued input (mouse AND keyboard)
@@ -635,22 +617,6 @@ extern bool         brotherBandingEnabled,
        combatBehaviorEnabled,
        backgroundSimulationPaused;
 
-//	This structure is used archiving any globals which will need to be saved
-//	in a save game file.
-
-struct GlobalsArchive {
-	int32           objectIndex,
-	                actorIndex;
-	bool            brotherBandingEnabled,
-	                centerActorIndicatorEnabled,
-	                interruptableMotionsPaused,
-	                objectStatesPaused,
-	                actorStatesPaused,
-	                actorTasksPaused,
-	                combatBehaviorEnabled,
-	                backgroundSimulationPaused;
-};
-
 //-----------------------------------------------------------------------
 //	Assign initial values to miscellaneous globals
 
@@ -667,45 +633,22 @@ void initGlobals(void) {
 	backgroundSimulationPaused = false;
 }
 
-//-----------------------------------------------------------------------
-//	Store miscellaneous globals in a save file
-
-void saveGlobals(SaveFileConstructor &saveGame) {
-	GlobalsArchive  archive;
-
-	archive.objectIndex                 = objectIndex;
-	archive.actorIndex                  = actorIndex;
-	archive.brotherBandingEnabled       = brotherBandingEnabled;
-	archive.centerActorIndicatorEnabled = centerActorIndicatorEnabled;
-	archive.interruptableMotionsPaused  = interruptableMotionsPaused;
-	archive.objectStatesPaused          = objectStatesPaused;
-	archive.actorStatesPaused           = actorStatesPaused;
-	archive.actorTasksPaused            = actorTasksPaused;
-	archive.combatBehaviorEnabled       = combatBehaviorEnabled;
-	archive.backgroundSimulationPaused  = backgroundSimulationPaused;
-
-	saveGame.writeChunk(
-	    MakeID('G', 'L', 'O', 'B'),
-	    &archive,
-	    sizeof(archive));
-}
-
-void saveGlobals(Common::OutSaveFile *out) {
+void saveGlobals(Common::OutSaveFile *outS) {
 	debugC(2, kDebugSaveload, "Saving globals");
 
-	out->write("GLOB", 4);
-	out->writeUint32LE(sizeof(GlobalsArchive));
-
+	outS->write("GLOB", 4);
+	CHUNK_BEGIN;
 	out->writeUint32LE(objectIndex);
 	out->writeUint32LE(actorIndex);
-	out->writeByte(brotherBandingEnabled);
-	out->writeByte(centerActorIndicatorEnabled);
-	out->writeByte(interruptableMotionsPaused);
-	out->writeByte(objectStatesPaused);
-	out->writeByte(actorStatesPaused);
-	out->writeByte(actorTasksPaused);
-	out->writeByte(combatBehaviorEnabled);
-	out->writeByte(backgroundSimulationPaused);
+	out->writeUint16LE(brotherBandingEnabled);
+	out->writeUint16LE(centerActorIndicatorEnabled);
+	out->writeUint16LE(interruptableMotionsPaused);
+	out->writeUint16LE(objectStatesPaused);
+	out->writeUint16LE(actorStatesPaused);
+	out->writeUint16LE(actorTasksPaused);
+	out->writeUint16LE(combatBehaviorEnabled);
+	out->writeUint16LE(backgroundSimulationPaused);
+	CHUNK_END;
 
 	debugC(3, kDebugSaveload, "... objectIndex = %d", objectIndex);
 	debugC(3, kDebugSaveload, "... actorIndex = %d", actorIndex);
@@ -719,39 +662,19 @@ void saveGlobals(Common::OutSaveFile *out) {
 	debugC(3, kDebugSaveload, "... backgroundSimulationPaused = %d", backgroundSimulationPaused);
 }
 
-//-----------------------------------------------------------------------
-//	Restore miscellaneouse globals from a save file
-
-void loadGlobals(SaveFileReader &saveGame) {
-	GlobalsArchive  archive;
-
-	saveGame.read(&archive, sizeof(archive));
-
-	objectIndex                 = archive.objectIndex;
-	actorIndex                  = archive.actorIndex;
-	brotherBandingEnabled       = archive.brotherBandingEnabled;
-	centerActorIndicatorEnabled = archive.centerActorIndicatorEnabled;
-	interruptableMotionsPaused  = archive.interruptableMotionsPaused;
-	objectStatesPaused          = archive.objectStatesPaused;
-	actorStatesPaused           = archive.actorStatesPaused;
-	actorTasksPaused            = archive.actorTasksPaused;
-	combatBehaviorEnabled       = archive.combatBehaviorEnabled;
-	backgroundSimulationPaused  = archive.backgroundSimulationPaused;
-}
-
 void loadGlobals(Common::InSaveFile *in) {
 	debugC(2, kDebugSaveload, "Loading globals");
 
 	objectIndex = in->readUint32LE();
 	actorIndex = in->readUint32LE();
-	brotherBandingEnabled = in->readByte();
-	centerActorIndicatorEnabled = in->readByte();
-	interruptableMotionsPaused = in->readByte();
-	objectStatesPaused = in->readByte();
-	actorStatesPaused = in->readByte();
-	actorTasksPaused = in->readByte();
-	combatBehaviorEnabled = in->readByte();
-	backgroundSimulationPaused = in->readByte();
+	brotherBandingEnabled = in->readUint16LE();
+	centerActorIndicatorEnabled = in->readUint16LE();
+	interruptableMotionsPaused = in->readUint16LE();
+	objectStatesPaused = in->readUint16LE();
+	actorStatesPaused = in->readUint16LE();
+	actorTasksPaused = in->readUint16LE();
+	combatBehaviorEnabled = in->readUint16LE();
+	backgroundSimulationPaused = in->readUint16LE();
 
 	debugC(3, kDebugSaveload, "... objectIndex = %d", objectIndex);
 	debugC(3, kDebugSaveload, "... actorIndex = %d", actorIndex);
@@ -794,7 +717,7 @@ bool initGUIMessagers(void) {
 		if (Status[i] == NULL)
 			return false;
 		sprintf(debItem, "Status%2.2d", i + 10);
-		Status2[i] = new StatusLineMessager(debItem, i, &g_vm->_mainPort, 468, 21 + (11 * i));
+		Status2[i] = new StatusLineMessager(debItem, i, &g_vm->_mainPort, 20, 21 + (11 * i));
 	}
 	for (int j = 0; j < 3; j++)
 		ratemess[j] = new StatusLineMessager("FrameRates", j, &g_vm->_mainPort, 5, 450 + (11 * j), 500);
@@ -853,12 +776,12 @@ void WriteStatusF2(int16, const char *, ...) {}
 
 int32 currentGamePerformance(void) {
 	int32 framePer = 100;
-	int32 lval = int(lrate.frameStat());
-	int32 fval = int(lrate.frameStat(grFramesPerSecond));
+	int32 lval = int(g_vm->_lrate->frameStat());
+	int32 fval = int(g_vm->_lrate->frameStat(grFramesPerSecond));
 	if (fval >= frameRate && lval > fval) {
 		framePer += (50 * ((lval - fval) / fval));
 	} else {
-		framePer = (100 * frate.frameStat(grFramesPerSecond)) / frameRate;
+		framePer = (100 * g_vm->_frate->frameStat(grFramesPerSecond)) / frameRate;
 	}
 	framePer = clamp(10, framePer, 240);
 	return framePer;
@@ -866,7 +789,7 @@ int32 currentGamePerformance(void) {
 
 
 void updateFrameCount(void) {
-	frate.updateFrameCount();
+	g_vm->_frate->updateFrameCount();
 }
 
 int32 eloopsPerSecond = 0;

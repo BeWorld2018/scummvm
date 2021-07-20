@@ -562,6 +562,12 @@ ScummEngine::ScummEngine(OSystem *syst, const DetectorResult &dr)
 			_renderMode = Common::kRenderDefault;
 		break;
 
+	case Common::kRenderMacintoshBW:
+		if (_game.platform != Common::kPlatformMacintosh || (_game.id != GID_LOOM && _game.id != GID_INDY3)) {
+			_renderMode = Common::kRenderDefault;
+		}
+		break;
+
 	default:
 		break;
 	}
@@ -1385,6 +1391,10 @@ Common::Error ScummEngine::init() {
 				dialog.runModal();
 			}
 		}
+
+		if (!_macScreen && _renderMode == Common::kRenderMacintoshBW) {
+			_renderMode = Common::kRenderDefault;
+		}
 	}
 
 	// Initialize backend
@@ -1564,6 +1574,14 @@ void ScummEngine::setupScumm(const Common::String &macResourceFile) {
 	//	_bootParam = 10001;
 
 	if (!_copyProtection && _game.id == GID_INDY4 && _bootParam == 0) {
+		_bootParam = -7873;
+	}
+
+	// This boot param does not exist in the DOS version, but skips straight
+	// to the difficulty selection screen in the Mac versions. (One of them
+	// didn't show the difficulty selection screen at all, but we patch the
+	// boot script to enable that.)
+	if (!_copyProtection && _game.id == GID_MONKEY2 && _game.platform == Common::kPlatformMacintosh && _bootParam == 0) {
 		_bootParam = -7873;
 	}
 
@@ -2873,6 +2891,23 @@ void ScummEngine::restart() {
 void ScummEngine::runBootscript() {
 	int args[NUM_SCRIPT_LOCAL];
 	memset(args, 0, sizeof(args));
+
+	// There are two known versions of Monkey Island 2 for the Mac. This
+	// boot param only exists in the floppy release. The version that was
+	// distributed on CD has a different boot script which doesn't show
+	// the copy protection (or difficulty selection) screen at all. We try
+	// to patch the script to put these features back, and use the boot
+	// param to bypass the copy protection screen (since ScummVM already
+	// disables the copy protection check in it).
+	//
+	// But if the script patching somehow failed, clear the boot param to
+	// avoid errors.
+
+	if (_game.id == GID_MONKEY2 && _game.platform == Common::kPlatformMacintosh && _bootParam == -7873 && !verifyMI2MacBootScript()) {
+		warning("Unknown MI2 Mac boot script. Using default boot param");
+		_bootParam = 0;
+	}
+
 	args[0] = _bootParam;
 	if (_game.id == GID_MANIAC && (_game.features & GF_DEMO) && (_game.platform != Common::kPlatformC64))
 		runScript(9, 0, 0, args);

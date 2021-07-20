@@ -33,10 +33,7 @@
 namespace Saga2 {
 
 // definitions
-Rect16  editBaseRect(7,
-                     45,
-                     314,
-                     111);
+StaticRect editBaseRect = {7, 45, 314, 111};
 
 /* ===================================================================== *
    Imports
@@ -45,7 +42,6 @@ Rect16  editBaseRect(7,
 //  These are all things that need to be moved to their proper places.
 
 extern gFont        *mainFont;
-extern gMousePointer pointer;           // the actual pointer
 
 //-----------------------------------------------------------------------
 // init
@@ -183,6 +179,7 @@ gTextBox::gTextBox(
 	cursorPos               = anchorPos = scrollPixels = 0;
 	undoBuffer              = new char[maxLen + 1]();
 	textFont                = font;
+	oldFont                 = nullptr;
 	fontHeight              = height;
 	fontOffset              = fontHeight + 2;
 
@@ -205,6 +202,10 @@ gTextBox::gTextBox(
 	isActiveCtl             = false;
 	selected                = 0;
 	parent                  = &list;
+
+	blinkStart = 0;
+	blinkX = 0;
+	blinkState = 0;
 
 	// set the filedStrings pointer
 	fieldStrings = stringBufs;
@@ -807,11 +808,11 @@ bool gTextBox::keyStroke(gPanelMessage &msg) {
 		//  Now, redraw the contents.
 
 		SAVE_GPORT_STATE(port);                  // save pen color, etc.
-		pointer.hide(port, extent);              // hide mouse pointer
+		g_vm->_pointer->hide(port, extent);              // hide mouse pointer
 
 		drawContents();                         // draw the string
 
-		pointer.show(port, extent);              // show mouse pointer
+		g_vm->_pointer->show(port, extent);              // show mouse pointer
 
 		return true;
 	}
@@ -861,14 +862,14 @@ void gTextBox::handleTimerTick(int32 tick) {
 		if (tick - blinkStart > blinkTime) {
 			gPort   &port = window.windowPort;
 			SAVE_GPORT_STATE(port);                  // save pen color, etc.
-			pointer.hide(port, extent);              // hide mouse pointer
+			g_vm->_pointer->hide(port, extent);              // hide mouse pointer
 
 			port.setPenMap(port.penMap);
 			port.setStyle(0);
 			port.setColor(blinkState ? blinkColor0 : blinkColor1);
 			port.fillRect(editRect.x + blinkX - ((blinkWide + 1) / 2), editRect.y + 1, blinkWide, editRect.height - 1);
 
-			pointer.show(port, extent);              // show mouse pointer
+			g_vm->_pointer->show(port, extent);              // show mouse pointer
 
 			blinkState = !blinkState;
 			blinkStart = tick;
@@ -1009,7 +1010,7 @@ void gTextBox::drawClipped(void) {
 	WriteStatusF(11, "Entry %d[%d] (%d:%d)", index, currentLen[index], cursorPos, anchorPos);
 
 	SAVE_GPORT_STATE(port);                  // save pen color, etc.
-	pointer.hide(port, extent);              // hide mouse pointer
+	g_vm->_pointer->hide(port, extent);              // hide mouse pointer
 
 	if (fullRedraw) {
 		drawAll(port, Point16(0, 0), Rect16(0, 0, rect.width, rect.height));
@@ -1025,7 +1026,7 @@ void gTextBox::drawClipped(void) {
 		drawAll(port, Point16(0, 0), Rect16(0, 0, rect.width, rect.height));
 	}
 
-	pointer.show(port, extent);              // show mouse pointer
+	g_vm->_pointer->show(port, extent);              // show mouse pointer
 
 }
 

@@ -35,8 +35,7 @@
 namespace Saga2 {
 
 extern WorldMapData                     *mapList;
-extern SpellDisplayList                 activeSpells;
-extern SpellStuff                       spellBook[];
+extern SpellStuff                       *spellBook;
 extern bool                             gameRunning;  // kludge
 extern PlatformHandle   platformList;       // platform resource hunk
 
@@ -45,7 +44,7 @@ extern PlatformHandle   platformList;       // platform resource hunk
  * ===================================================================== */
 
 static int16        prevMapNum;
-static StaticTilePoint prevCoords = Nowhere;
+static StaticTilePoint prevCoords = {(int16)minint16, (int16)minint16, (int16)minint16};
 static MetaTilePtr  prevMeta;
 
 /* ===================================================================== *
@@ -72,6 +71,10 @@ SpellStuff::SpellStuff() {
 	targets = NULL;
 	manaType = sManaIDSkill;
 	manaUse = 0;
+	shape = eAreaInvisible;
+	size = 0;
+	range = 0;
+	sound = 0;
 }
 
 //-----------------------------------------------------------------------
@@ -779,6 +782,12 @@ Effectron::Effectron() {
 	age = 0;
 	pos = 0;
 	flags = effectronDead;
+	parent = nullptr;
+	partno = 0;
+	totalSteps = stepNo = 0;
+	hgt = 0;
+	brd = 0;
+	spr = 0;
 }
 
 //-----------------------------------------------------------------------
@@ -788,6 +797,13 @@ Effectron::Effectron(uint16 newPos, uint16 newDir) {
 	age = 0;
 	pos = (newDir << 16) + newPos;
 	flags = 0;
+	flags = effectronDead;
+	parent = nullptr;
+	partno = 0;
+	totalSteps = stepNo = 0;
+	hgt = 0;
+	brd = 0;
+	spr = 0;
 }
 
 //-----------------------------------------------------------------------

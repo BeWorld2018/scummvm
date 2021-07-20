@@ -34,10 +34,11 @@ namespace AGS {
 namespace Engine {
 
 class ScummVMLibrary : public BaseLibrary {
+private:
+	Plugins::PluginBase *_library = nullptr;
+
 public:
-	ScummVMLibrary()
-		: _library(nullptr) {
-	};
+	ScummVMLibrary() : BaseLibrary() {}
 
 	~ScummVMLibrary() override {
 		Unload();
@@ -58,7 +59,7 @@ public:
 
 	bool Unload() override {
 		if (_library) {
-			void *lib = _library;
+			Plugins::PluginBase *lib = _library;
 			_library = nullptr;
 
 			return (Plugins::pluginClose(lib) == 0);
@@ -67,16 +68,9 @@ public:
 		}
 	}
 
-	void *GetFunctionAddress(const AGS::Shared::String &functionName) override {
-		if (_library) {
-			return Plugins::pluginSym(_library, functionName.GetCStr());
-		} else {
-			return nullptr;
-		}
+	Plugins::PluginBase *getPlugin() const {
+		return _library;
 	}
-
-private:
-	void *_library;
 };
 
 

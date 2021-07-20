@@ -164,6 +164,12 @@ class PathTileRegion {
 
 public:
 
+	PathTileRegion() {
+		mapNum = 0;
+		array = nullptr;
+		subMetaFlags = nullptr;
+	}
+
 	void init(
 	    int16           map,
 	    const TilePoint &org,
@@ -654,6 +660,15 @@ struct QueueItem {
 	uint8           pad;
 	int16           cost;                   // Cost to get to this cell
 
+	QueueItem() {
+		z = 0;
+		u = v = 0;
+		platform = 0;
+		pad = 0;
+		cost = 0;
+		direction = 0;
+	}
+
 	operator int() {
 		return cost;
 	}
@@ -696,6 +711,7 @@ class DirMaskGroup {
 	void computeMask(uint8 objSection);
 
 public:
+	DirMaskGroup() : crossSection(0) {}
 	DirMask &operator[](int16 index) {
 		return dMask[index];
 	}
@@ -711,7 +727,10 @@ private:
 	int16           arraySize;
 
 public:
-	MaskComputer(void) : arraySize(0) {}
+	MaskComputer(void) : arraySize(0) {
+		for (int i = 0; i < 8; i++)
+			ptrArray[i] = nullptr;
+	}
 
 	DirMaskGroup *computeMask(uint8 objSection);
 };
@@ -1097,8 +1116,6 @@ protected:
 
 	static DirMaskGroup     *dirMasks;
 
-	static PathTileRegion   tileArray;
-
 	//  Calculates the center point given the base coordinate of the
 	//  cell array and a queue item which contains cell coordinates.
 	static void calcCenterPt(const TilePoint &baseTileCoords_, const QueueItem &qi) {
@@ -1115,6 +1132,8 @@ protected:
 	PathRequest(Actor *a, int16 howSmart);
 
 public:
+	static PathTileRegion   *tileArray;
+
 	virtual ~PathRequest() {
 		if (path)
 			delete[] path;
@@ -1268,10 +1287,10 @@ static PathSubMetaFlags     subMetaFlags;
 
 static MaskComputer         *maskComp;
 
-static PriorityQueue<QueueItem, 192> queue;
+static PriorityQueue<QueueItem, 192> *queue;
 static PathArray            *cellArray;
 
-static TileRegion           objectVolumeArray[128];
+static TileRegion           *objectVolumeArray;
 
 struct VolumeLookupNode {
 	VolumeLookupNode        *next;
@@ -1297,9 +1316,9 @@ int16           PathRequest::fetchRadius;
 int32           PathRequest::firstTick,
                 PathRequest::timeLimit;
 
-DirMaskGroup    *PathRequest::dirMasks;
+DirMaskGroup    *PathRequest::dirMasks = nullptr;
 
-PathTileRegion  PathRequest::tileArray;
+PathTileRegion  *PathRequest::tileArray = nullptr;
 
 StaticTilePoint DestinationPathRequest::targetCoords = {0, 0, 0};
 uint8           DestinationPathRequest::targetPlatform;
@@ -1345,8 +1364,9 @@ static void push(
 	newItem.platform = platform;
 	newItem.cost = cost;
 	newItem.direction = direction;
+	newItem.pad = 0;
 
-	if (queue.insert(newItem)) {
+	if (queue->insert(newItem)) {
 		cellPtr->direction = direction;
 		cellPtr->platformDelta = platformDelta;
 		cellPtr->cost = cost;
@@ -1357,31 +1377,6 @@ static void push(
 	}
 }
 
-
-/* ===================================================================== *
-   Path finder management functions
- * ===================================================================== */
-
-void initPathFinder(void) {
-	pathTileArray = (PathTilePosArray *)malloc( sizeof *pathTileArray);
-	maskComp = new MaskComputer;
-	cellArray = new PathArray;
-}
-
-void cleanupPathFinder(void) {
-	if (pathTileArray) {
-		free(pathTileArray);
-		pathTileArray = nullptr;
-	}
-	if (maskComp) {
-		delete maskComp;
-		maskComp = nullptr;
-	}
-	if (cellArray != nullptr) {
-		delete cellArray;
-		cellArray = nullptr;
-	}
-}
 
 /* ===================================================================== *
    Member Functions
@@ -1438,10 +1433,10 @@ void PathRequest::initialize(void) {
 	baseCoords.z = 0;
 
 	//  Clear the priority queue
-	queue.clear();
+	queue->clear();
 
 	//  Initialize the tile array
-	tileArray.init(
+	tileArray->init(
 	    actor->getMapNum(),
 	    TilePoint(
 	        baseTileCoords.u - 2,
@@ -1534,7 +1529,7 @@ void PathRequest::initialize(void) {
 			}
 		}
 
-		if (++objectVolumes >= ARRAYSIZE(objectVolumeArray)) break;
+		if (++objectVolumes >= kObjectVolumeArraySize) break;
 	}
 big_break:
 
@@ -1700,7 +1695,7 @@ PathResult PathRequest::findPath(void) {
 
 	int32 lastTick_ = gameTime;
 
-	while (queue.remove(qi)) {
+	while (queue->remove(qi)) {
 		assert(cellArray->getCell(qi.platform, qi.u, qi.v) != nullptr);
 		assert(qi.u >= 1 && qi.u < searchDiameter - 1);
 		assert(qi.v >= 1 && qi.v < searchDiameter - 1);
@@ -1729,7 +1724,7 @@ PathResult PathRequest::findPath(void) {
 			tDir = tDirTable2;
 			endDir = 8;
 
-			tileArray.fetchTileSection(
+			tileArray->fetchTileSection(
 			    TilePoint(qi.u - fetchRadius, qi.v - fetchRadius, 0)
 			    +   baseTileCoords,
 			    TilePoint(
@@ -1744,7 +1739,7 @@ PathResult PathRequest::findPath(void) {
 
 			switch (qi.direction) {
 			case 0:
-				tileArray.fetchTileSection(
+				tileArray->fetchTileSection(
 				    TilePoint(
 				        qi.u + fetchRadius,
 				        qi.v - fetchRadius,
@@ -1753,7 +1748,7 @@ PathResult PathRequest::findPath(void) {
 				    TilePoint(1, fetchRadius << 1, 0));
 					// fall through
 			case 1:
-				tileArray.fetchTileSection(
+				tileArray->fetchTileSection(
 				    TilePoint(
 				        qi.u - fetchRadius,
 				        qi.v + fetchRadius,
@@ -1762,7 +1757,7 @@ PathResult PathRequest::findPath(void) {
 				    TilePoint((fetchRadius << 1) + 1, 1, 0));
 				break;
 			case 2:
-				tileArray.fetchTileSection(
+				tileArray->fetchTileSection(
 				    TilePoint(
 				        qi.u - fetchRadius + 1,
 				        qi.v + fetchRadius,
@@ -1771,7 +1766,7 @@ PathResult PathRequest::findPath(void) {
 				    TilePoint(fetchRadius << 1, 1, 0));
 					// fall through
 			case 3:
-				tileArray.fetchTileSection(
+				tileArray->fetchTileSection(
 				    TilePoint(
 				        qi.u - fetchRadius,
 				        qi.v - fetchRadius,
@@ -1780,7 +1775,7 @@ PathResult PathRequest::findPath(void) {
 				    TilePoint(1, (fetchRadius << 1) + 1, 0));
 				break;
 			case 4:
-				tileArray.fetchTileSection(
+				tileArray->fetchTileSection(
 				    TilePoint(
 				        qi.u - fetchRadius,
 				        qi.v - fetchRadius + 1,
@@ -1789,7 +1784,7 @@ PathResult PathRequest::findPath(void) {
 				    TilePoint(1, fetchRadius << 1, 0));
 					// fall through
 			case 5:
-				tileArray.fetchTileSection(
+				tileArray->fetchTileSection(
 				    TilePoint(
 				        qi.u - fetchRadius,
 				        qi.v - fetchRadius,
@@ -1798,7 +1793,7 @@ PathResult PathRequest::findPath(void) {
 				    TilePoint((fetchRadius << 1) + 1, 1, 0));
 				break;
 			case 6:
-				tileArray.fetchTileSection(
+				tileArray->fetchTileSection(
 				    TilePoint(
 				        qi.u - fetchRadius,
 				        qi.v - fetchRadius,
@@ -1807,7 +1802,7 @@ PathResult PathRequest::findPath(void) {
 				    TilePoint(fetchRadius << 1, 1,  0));
 					// fall through
 			case 7:
-				tileArray.fetchTileSection(
+				tileArray->fetchTileSection(
 				    TilePoint(
 				        qi.u + fetchRadius,
 				        qi.v - fetchRadius,
@@ -1847,7 +1842,7 @@ PathResult PathRequest::findPath(void) {
 				testPt.u += tDirTable[dir].u;
 				testPt.v += tDirTable[dir].v;
 				testPt.z =  tileSlopeHeight(
-				                tileArray,
+				                *tileArray,
 				                testPt,
 				                actor,
 				                &pti,
@@ -1877,9 +1872,9 @@ PathResult PathRequest::findPath(void) {
 				        u < maskReg.max.u;
 				        u++, maskU++) {
 					PathTilePosInfo *arrRow =
-					    &tileArray.array[
-					        (u - tileArray.origin.u)
-					        *   tileArray.area.v];
+					    &tileArray->array[
+					        (u - tileArray->origin.u)
+					        *   tileArray->area.v];
 
 					for (v = maskReg.min.v, maskV = 0;
 					        v < maskReg.max.v;
@@ -1906,7 +1901,7 @@ PathResult PathRequest::findPath(void) {
 						}
 
 						terrain |=  tileTerrain(
-						                &arrRow[v - tileArray.origin.v],
+						                &arrRow[v - tileArray->origin.v],
 						                ptMask.mask[(maskU << 2) | maskV],
 						                testPt.z,
 						                testPt.z + aph);
@@ -1952,15 +1947,18 @@ PathResult PathRequest::findPath(void) {
 				} else if (cornerHeight[0] == 0 && cornerHeight[3] == 0) {
 					stairDir = 7;
 					stairHeight = pti.surfaceHeight + cornerHeight[1];
-				} else continue;
+				} else
+					continue;
 
 				//  Do not go onto the stair at a right angle
 
 				if (stairDir == 1 || stairDir == 5) {
-					if (dir == 3 || dir == 7) continue;
+					if (dir == 3 || dir == 7)
+						continue;
 				} else if (stairDir == 3 || stairDir == 7) {
-					if (dir == 1 || dir == 5) continue;
-				} else continue;
+					if (dir == 1 || dir == 5)
+						continue;
+				}
 
 				//  Add any additional costs for travelling on these
 				//  stairs.
@@ -2011,7 +2009,7 @@ PathResult PathRequest::findPath(void) {
 			//  Cost should never be less than previous cost
 			cost = MAX<int16>(cost, qi.cost);
 
-			//  Push the new point onto the queue.
+			//  Push the new point onto the queue->
 
 			push(
 			    TilePoint(
@@ -2050,7 +2048,7 @@ bool PathRequest::timeLimitExceeded(void) {
 #ifdef OLD_PATHFINDER_TIME_MGMT
 	return (gameTime - firstTick >= timeLimit);
 #else
-	int32 cutoff = smartness / (queue.getCount() ? 5 : 8);
+	int32 cutoff = smartness / (queue->getCount() ? 5 : 8);
 	return (gameTime - firstTick >= cutoff);
 #endif
 }
@@ -2199,8 +2197,10 @@ WanderPathRequest::WanderPathRequest(
 		tetherMinV = mTask->tetherMinV;
 		tetherMaxU = mTask->tetherMaxU;
 		tetherMaxV = mTask->tetherMaxV;
-	} else
+	} else {
 		tethered = false;
+		tetherMinU = tetherMinV = tetherMaxU = tetherMaxV = 0;
+	}
 }
 
 //  Initialize the static data members
@@ -2388,7 +2388,7 @@ enum cellStates {
 
 typedef uint8       SimpleCellArray[searchDiameter][searchDiameter];
 
-static PriorityQueue<QueueItem, 128> squeue;
+static PriorityQueue<QueueItem, 128> *squeue;
 
 static void spush(const TilePoint &tp, int cost, int direction) {
 	QueueItem       newItem;
@@ -2404,8 +2404,9 @@ static void spush(const TilePoint &tp, int cost, int direction) {
 	newItem.z = tp.z;
 	newItem.cost = cost;
 	newItem.direction = direction;
+	newItem.platform = 0;
 
-	squeue.insert(newItem);
+	squeue->insert(newItem);
 }
 
 /*  ordering of bits:
@@ -2483,7 +2484,7 @@ TilePoint selectNearbySite(
 
 	//  Clear the search array and the queue
 	memset(cellArray1, cellUnvisited, sizeof(*cellArray1));
-	squeue.clear();
+	squeue->clear();
 
 	//  Iterate through all actors in the region and mark areas
 	//  as occupied.
@@ -2527,7 +2528,7 @@ TilePoint selectNearbySite(
 	      1,                              // initial cost is 1
 	      0);                             // facing irrelevant
 
-	while (squeue.remove(qi)) {
+	while (squeue->remove(qi)) {
 		TilePoint   centerTileCoords,
 		            distVector;
 		StaticTilePoint *tDir;
@@ -2669,7 +2670,7 @@ TilePoint selectNearbySite(
 
 			*cell |= cellVisited;
 
-			//  Push the new point onto the queue.
+			//  Push the new point onto the queue->
 			//  (Cost is random so as to allow site selection to
 			//  be somewhat non-deterministic).
 			spush(TilePoint(qi.u + tDir->u,
@@ -2751,7 +2752,7 @@ bool checkPath(
 
 	//  Clear the search array and the queue
 	memset(cellArray1, cellUnvisited, sizeof(* cellArray1));
-	squeue.clear();
+	squeue->clear();
 
 	//  Push the starting location in the center of the array.
 	minTileRegU = (startingCoords.u - kTileUVSize / 2) >> kTileUVShift;
@@ -2802,7 +2803,7 @@ bool checkPath(
 		}
 	}
 
-	while (squeue.remove(qi)) {
+	while (squeue->remove(qi)) {
 		TilePoint   centerTileCoords;
 		StaticTilePoint *tDir;
 		int16       centerDistFromDest;
@@ -2912,7 +2913,7 @@ bool checkPath(
 			}
 
 
-			//  Push the new point onto the queue.
+			//  Push the new point onto the queue->
 			spush(TilePoint(qi.u + tDir->u,
 			                qi.v + tDir->v,
 			                testPt.z),
@@ -2925,6 +2926,42 @@ bool checkPath(
 
 	//  If we're here we've haven't found a path
 	return false;
+}
+
+
+/* ===================================================================== *
+   Path finder management functions
+ * ===================================================================== */
+
+void initPathFinder(void) {
+	queue = new PriorityQueue<QueueItem, 192>;
+	squeue = new PriorityQueue<QueueItem, 128>;
+	objectVolumeArray = new TileRegion[128];
+
+	pathTileArray = (PathTilePosArray *)malloc( sizeof *pathTileArray);
+	maskComp = new MaskComputer;
+	cellArray = new PathArray;
+	PathRequest::tileArray = new PathTileRegion;
+}
+
+void cleanupPathFinder(void) {
+	if (pathTileArray) {
+		free(pathTileArray);
+		pathTileArray = nullptr;
+	}
+	if (maskComp) {
+		delete maskComp;
+		maskComp = nullptr;
+	}
+	if (cellArray != nullptr) {
+		delete cellArray;
+		cellArray = nullptr;
+	}
+
+	delete queue;
+	delete squeue;
+	delete[] objectVolumeArray;
+	delete PathRequest::tileArray;
 }
 
 } // end of namespace Saga2

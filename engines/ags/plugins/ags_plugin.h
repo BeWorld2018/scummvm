@@ -31,16 +31,13 @@
 #ifndef AGS_PLUGINS_AGS_PLUGIN_H
 #define AGS_PLUGINS_AGS_PLUGIN_H
 
+#include "common/array.h"
 #include "ags/shared/core/types.h"
 #include "ags/shared/font/ags_font_renderer.h"
-#include "common/array.h"
+#include "ags/plugins/plugin_base.h"
+#include "ags/engine/util/library_scummvm.h"
 
 namespace AGS3 {
-
-class ScriptMethodParams : public Common::Array<intptr_t> {
-public:
-	NumberPtr _result;
-};
 
 // If the plugin isn't using DDraw, don't require the headers
 #ifndef DIRECTDRAW_VERSION
@@ -63,6 +60,8 @@ class BITMAP;
 typedef int HWND;
 #endif
 
+#define MAXPLUGINS 20
+
 #define AGSIFUNC(type) virtual type
 
 #define MASK_WALKABLE   1
@@ -71,13 +70,15 @@ typedef int HWND;
 // MASK_REGIONS is interface version 11 and above only
 #define MASK_REGIONS    4
 
+#define PLUGIN_FILENAME_MAX (49)
+
 // **** WARNING: DO NOT ALTER THESE CLASSES IN ANY WAY!
 // **** CHANGING THE ORDER OF THE FUNCTIONS OR ADDING ANY VARIABLES
 // **** WILL CRASH THE SYSTEM.
 
 struct AGSColor {
-unsigned char r, g, b;
-unsigned char padding;
+	unsigned char r, g, b;
+	unsigned char padding;
 };
 
 struct AGSGameOptions {
@@ -323,7 +324,8 @@ public:
 	// get engine version
 	AGSIFUNC(const char *) GetEngineVersion();
 	// register a script function with the system
-	AGSIFUNC(void) RegisterScriptFunction(const char *name, void *address);
+	AGSIFUNC(void) RegisterScriptFunction(const char *name,
+		Plugins::ScriptContainer *instance);
 	#ifdef WINDOWS_VERSION
 	// get game window handle
 	AGSIFUNC(HWND) GetWindowHandle();
@@ -425,7 +427,7 @@ public:
 	// get the walk-behind baseline of a specific WB area
 	AGSIFUNC(int)    GetWalkbehindBaseline(int32 walkbehind);
 	// get the address of a script function
-	AGSIFUNC(void *) GetScriptFunctionAddress(const char *funcName);
+	AGSIFUNC(Plugins::PluginMethod) GetScriptFunctionAddress(const char *funcName);
 	// get the transparent colour of a bitmap
 	AGSIFUNC(int)    GetBitmapTransparentColor(BITMAP *);
 	// get the character scaling level at a particular point
@@ -558,33 +560,24 @@ public:
 	AGSIFUNC(void)  GetRenderStageDesc(AGSRenderStageDesc *desc);
 };
 
-#ifdef THIS_IS_THE_PLUGIN
+struct EnginePlugin {
+	char filename[PLUGIN_FILENAME_MAX + 1] = { 0 };
+	AGS::Engine::Library   library;
+	Plugins::PluginBase *_plugin = nullptr;
+	bool available = false;
+	char *savedata = nullptr;
+	int savedatasize = 0;
+	int wantHook = 0;
+	int invalidatedRegion = 0;
+	bool builtin = false;
 
-#ifdef WINDOWS_VERSION
-#define DLLEXPORT extern "C" __declspec(dllexport)
-#else
-// MAC VERSION: compile with -fvisibility=hidden
-// gcc -dynamiclib -std=gnu99 agsplugin.c -fvisibility=hidden -o agsplugin.dylib
-#define DLLEXPORT extern "C" __attribute__((visibility("default")))
-#endif
+	IAGSEngine  eiface;
 
-DLLEXPORT const char *AGS_GetPluginName(void);
-DLLEXPORT int    AGS_EditorStartup(IAGSEditor *);
-DLLEXPORT void   AGS_EditorShutdown(void);
-DLLEXPORT void   AGS_EditorProperties(HWND);
-DLLEXPORT int    AGS_EditorSaveGame(char *, int);
-DLLEXPORT void   AGS_EditorLoadGame(char *, int);
-DLLEXPORT void   AGS_EngineStartup(IAGSEngine *);
-DLLEXPORT void   AGS_EngineShutdown(void);
-DLLEXPORT int    AGS_EngineOnEvent(int, int);
-DLLEXPORT int    AGS_EngineDebugHook(const char *, int, int);
-DLLEXPORT void   AGS_EngineInitGfx(const char *driverID, void *data);
-// We export this to verify that we are an AGS Plugin
-DLLEXPORT int    AGS_PluginV2() {
-return 1;
-}
-
-#endif // THIS_IS_THE_PLUGIN
+	EnginePlugin() {
+		eiface.version = 0;
+		eiface.pluginId = 0;
+	}
+};
 
 extern void PluginSimulateMouseClick(int pluginButtonID);
 

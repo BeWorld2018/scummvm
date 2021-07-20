@@ -28,6 +28,7 @@
 #define SAGA2_TCOORDS_H
 
 #include "common/savefile.h"
+#include "common/memstream.h"
 
 namespace Saga2 {
 
@@ -150,7 +151,7 @@ struct TilePoint {
 		z = stream->readSint16LE();
 	}
 
-	void write(Common::OutSaveFile *out) const {
+	void write(Common::MemoryWriteStreamDynamic *out) const {
 		out->writeSint16LE(u);
 		out->writeSint16LE(v);
 		out->writeSint16LE(z);
@@ -222,6 +223,16 @@ const extern StaticTilePoint Nowhere;
 struct TileRegion {
 	TilePoint	min,
 				max;
+
+	void read(Common::InSaveFile *in) {
+		min.load(in);
+		max.load(in);
+	}
+
+	void write(Common::MemoryWriteStreamDynamic *out) {
+		min.write(out);
+		max.write(out);
+	}
 };
 
 /* ============================================================================ *

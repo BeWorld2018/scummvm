@@ -175,7 +175,7 @@ BitmapCastMember::~BitmapCastMember() {
 		delete _matte;
 }
 
-Graphics::MacWidget *BitmapCastMember::createWidget(Common::Rect &bbox, Channel *channel) {
+Graphics::MacWidget *BitmapCastMember::createWidget(Common::Rect &bbox, Channel *channel, SpriteType spriteType) {
 	if (!_img) {
 		warning("BitmapCastMember::createWidget: No image decoder");
 		return nullptr;
@@ -184,7 +184,13 @@ Graphics::MacWidget *BitmapCastMember::createWidget(Common::Rect &bbox, Channel 
 	Graphics::MacWidget *widget = new Graphics::MacWidget(g_director->getCurrentWindow(), bbox.left, bbox.top, bbox.width(), bbox.height(), g_director->_wm, false);
 
 	// scale for drawing a different size sprite
-	if (bbox.width() < _initialRect.width() || bbox.height() < _initialRect.height()) {
+	copyStretchImg(widget->getSurface()->surfacePtr(), bbox);
+
+	return widget;
+}
+
+void BitmapCastMember::copyStretchImg(Graphics::Surface *surface, const Common::Rect &bbox) {
+	if (bbox.width() != _initialRect.width() || bbox.height() != _initialRect.height()) {
 
 		int scaleX = SCALE_THRESHOLD * _initialRect.width() / bbox.width();
 		int scaleY = SCALE_THRESHOLD * _initialRect.height() / bbox.height();
@@ -193,29 +199,27 @@ Graphics::MacWidget *BitmapCastMember::createWidget(Common::Rect &bbox, Channel 
 			if (g_director->_wm->_pixelformat.bytesPerPixel == 1) {
 				for (int x = 0, scaleXCtr = 0; x < bbox.width(); x++, scaleXCtr += scaleX) {
 					const byte *src = (const byte *)_img->getSurface()->getBasePtr(scaleXCtr / SCALE_THRESHOLD, scaleYCtr / SCALE_THRESHOLD);
-					*(byte *)widget->getSurface()->getBasePtr(x, y) = *src;
+					*(byte *)surface->getBasePtr(x, y) = *src;
 				}
 			} else {
 				for (int x = 0, scaleXCtr = 0; x < bbox.width(); x++, scaleXCtr += scaleX) {
 					const int *src = (const int *)_img->getSurface()->getBasePtr(scaleXCtr / SCALE_THRESHOLD, scaleYCtr / SCALE_THRESHOLD);
-					*(int *)widget->getSurface()->getBasePtr(x, y) = *src;
+					*(int *)surface->getBasePtr(x, y) = *src;
 				}
 			}
 		}
-
 	} else {
-		widget->getSurface()->blitFrom(*_img->getSurface());
+		surface->copyFrom(*_img->getSurface());
 	}
-
-	return widget;
 }
 
-void BitmapCastMember::createMatte() {
+void BitmapCastMember::createMatte(Common::Rect &bbox) {
 	// Like background trans, but all white pixels NOT ENCLOSED by coloured pixels
 	// are transparent
 	Graphics::Surface tmp;
-	tmp.create(_initialRect.width(), _initialRect.height(), g_director->_pixelformat);
-	tmp.copyFrom(*_img->getSurface());
+	tmp.create(bbox.width(), bbox.height(), g_director->_pixelformat);
+
+	copyStretchImg(&tmp, bbox);
 
 	_noMatte = true;
 
@@ -266,10 +270,16 @@ void BitmapCastMember::createMatte() {
 	tmp.free();
 }
 
-Graphics::Surface *BitmapCastMember::getMatte() {
+Graphics::Surface *BitmapCastMember::getMatte(Common::Rect &bbox) {
 	// Lazy loading of mattes
 	if (!_matte && !_noMatte) {
-		createMatte();
+		createMatte(bbox);
+	}
+
+	// check for the scale matte
+	Graphics::Surface *surface = _matte ? _matte->getMask() : nullptr;
+	if (surface && (surface->w != bbox.width() || surface->h != bbox.height())) {
+		createMatte(bbox);
 	}
 
 	return _matte ? _matte->getMask() : nullptr;
@@ -409,7 +419,7 @@ void DigitalVideoCastMember::stopVideo(Channel *channel) {
 	debugC(2, kDebugImages, "STOPPING VIDEO %s", _filename.c_str());
 }
 
-Graphics::MacWidget *DigitalVideoCastMember::createWidget(Common::Rect &bbox, Channel *channel) {
+Graphics::MacWidget *DigitalVideoCastMember::createWidget(Common::Rect &bbox, Channel *channel, SpriteType spriteType) {
 	Graphics::MacWidget *widget = new Graphics::MacWidget(g_director->getCurrentWindow(), bbox.left, bbox.top, bbox.width(), bbox.height(), g_director->_wm, false);
 
 	_channel = channel;
@@ -718,19 +728,29 @@ void TextCastMember::importStxt(const Stxt *stxt) {
 	_ptext = stxt->_ptext;
 }
 
-Graphics::MacWidget *TextCastMember::createWidget(Common::Rect &bbox, Channel *channel) {
+Graphics::MacWidget *TextCastMember::createWidget(Common::Rect &bbox, Channel *channel, SpriteType spriteType) {
 	Graphics::MacFont *macFont = new Graphics::MacFont(_fontId, _fontSize, _textSlant);
 	Graphics::MacWidget *widget = nullptr;
 	Common::Rect dims(bbox);
 
-	switch (_type) {
+	CastType type = _type;
+	ButtonType buttonType = _buttonType;
+
+	// WORKAROUND: In D2/D3 there can be text casts that have button
+	// information set in the sprite.
+	if (type == kCastText && isButtonSprite(spriteType)) {
+		type = kCastButton;
+		buttonType = ButtonType(spriteType - 8);
+	}
+
+	switch (type) {
 	case kCastText:
 		// for mactext, we can expand now, but we can't shrink. so we may pass the small size when we have adjustToFit text style
 		if (_textType == kTextTypeAdjustToFit) {
 			dims.right = MIN<int>(dims.right, dims.left + _initialRect.width());
 			dims.bottom = MIN<int>(dims.bottom, dims.top + _initialRect.height());
 		}
-		widget = new Graphics::MacText(g_director->getCurrentWindow(), bbox.left, bbox.top, dims.width(), dims.height(), g_director->_wm, _ftext, macFont, getForeColor(), getBackColor(), _initialRect.width(), getAlignment(), 0, _borderSize, _gutterSize, _boxShadow, _textShadow, Common::kMacCentralEurope, _textType == kTextTypeFixed);
+		widget = new Graphics::MacText(g_director->getCurrentWindow(), bbox.left, bbox.top, dims.width(), dims.height(), g_director->_wm, _ftext, macFont, getForeColor(), getBackColor(), _initialRect.width(), getAlignment(), 0, _borderSize, _gutterSize, _boxShadow, _textShadow, _textType == kTextTypeFixed);
 		((Graphics::MacText *)widget)->setSelRange(g_director->getCurrentMovie()->_selStart, g_director->getCurrentMovie()->_selEnd);
 		((Graphics::MacText *)widget)->setEditable(_editable);
 		((Graphics::MacText *)widget)->draw();
@@ -748,7 +768,7 @@ Graphics::MacWidget *TextCastMember::createWidget(Common::Rect &bbox, Channel *c
 	case kCastButton:
 		// note that we use _initialRect for the dimensions of the button;
 		// the values provided in the sprite bounding box are ignored
-		widget = new Graphics::MacButton(Graphics::MacButtonType(_buttonType), getAlignment(), g_director->getCurrentWindow(), bbox.left, bbox.top, _initialRect.width(), _initialRect.height(), g_director->_wm, _ftext, macFont, getForeColor(), 0xff, Common::kMacCentralEurope);
+		widget = new Graphics::MacButton(Graphics::MacButtonType(buttonType), getAlignment(), g_director->getCurrentWindow(), bbox.left, bbox.top, _initialRect.width(), _initialRect.height(), g_director->_wm, _ftext, macFont, getForeColor(), 0xff);
 		widget->_focusable = true;
 
 		((Graphics::MacButton *)widget)->setHilite(_hilite);
@@ -772,13 +792,13 @@ void TextCastMember::importRTE(byte *text) {
 	//child2 is positional?
 }
 
-void TextCastMember::setText(const char *text) {
+void TextCastMember::setText(const Common::U32String &text) {
 	// Do nothing if text did not change
 	if (_ptext.equals(text))
 		return;
 
 	// If text has changed, use the cached formatting from first STXT in this castmember.
-	Common::String formatting = Common::String::format("\001\016%04x%02x%04x%04x%04x%04x", _fontId, _textSlant, _fontSize, _fgpalinfo1, _fgpalinfo2, _fgpalinfo3);
+	Common::U32String formatting = Common::String::format("\001\016%04x%02x%04x%04x%04x%04x", _fontId, _textSlant, _fontSize, _fgpalinfo1, _fgpalinfo2, _fgpalinfo3);
 	_ptext = text;
 	_ftext = formatting + text;
 
@@ -811,7 +831,7 @@ int TextCastMember::getTextSize() {
 	return 0;
 }
 
-Common::String TextCastMember::getText() {
+Common::U32String TextCastMember::getText() {
 	return _ptext;
 }
 
@@ -838,7 +858,7 @@ void TextCastMember::setEditable(bool editable) {
 
 void TextCastMember::updateFromWidget(Graphics::MacWidget *widget) {
 	if (widget && _type == kCastText) {
-		_ptext = ((Graphics::MacText *)widget)->getEditedString().encode();
+		_ptext = ((Graphics::MacText *)widget)->getEditedString();
 	}
 }
 

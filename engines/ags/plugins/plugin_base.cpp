@@ -42,6 +42,7 @@
 #include "ags/plugins/ags_sprite_font/ags_sprite_font_clifftop.h"
 #include "ags/plugins/ags_tcp_ip/ags_tcp_ip.h"
 #include "ags/plugins/ags_wadjet_util/ags_wadjet_util.h"
+#include "ags/plugins/ags_waves/ags_waves.h"
 #include "ags/ags.h"
 #include "ags/detection.h"
 #include "common/str.h"
@@ -49,7 +50,7 @@
 namespace AGS3 {
 namespace Plugins {
 
-void *pluginOpen(const char *filename) {
+Plugins::PluginBase *pluginOpen(const char *filename) {
 	Common::String fname(filename);
 
 	// Check for if the game specifies a specific plugin version for this game
@@ -127,19 +128,17 @@ void *pluginOpen(const char *filename) {
 	if (fname.equalsIgnoreCase("AGSWadjetUtil"))
 		return new AGSWadjetUtil::AGSWadjetUtil();
 
+	if (fname.equalsIgnoreCase("agswaves"))
+		return new AGSWaves::AGSWaves();
+
 	debug("Plugin '%s' is not yet supported", fname.c_str());
 	return nullptr;
 }
 
-int pluginClose(void *lib) {
+int pluginClose(Plugins::PluginBase *lib) {
 	PluginBase *plugin = static_cast<PluginBase *>(lib);
 	delete plugin;
 	return 0;
-}
-
-void *pluginSym(void *lib, const char *method) {
-	PluginBase *plugin = static_cast<PluginBase *>(lib);
-	return (*plugin)[method];
 }
 
 const char *pluginError() {
@@ -148,53 +147,84 @@ const char *pluginError() {
 
 /*------------------------------------------------------------------*/
 
-PluginBase::PluginBase() {
-	DLL_METHOD(AGS_PluginV2);
-	DLL_METHOD(AGS_EditorStartup);
-	DLL_METHOD(AGS_EditorShutdown);
-	DLL_METHOD(AGS_EditorProperties);
-	DLL_METHOD(AGS_EditorSaveGame);
-	DLL_METHOD(AGS_EditorLoadGame);
-	DLL_METHOD(AGS_EngineStartup);
-	DLL_METHOD(AGS_EngineShutdown);
-	DLL_METHOD(AGS_EngineOnEvent);
-	DLL_METHOD(AGS_EngineDebugHook);
-	DLL_METHOD(AGS_EngineInitGfx);
+ScriptMethodParams::ScriptMethodParams() {
+
 }
 
-int PluginBase::AGS_EditorStartup(IAGSEditor *) {
-	return 0;
+ScriptMethodParams::ScriptMethodParams(int val1) {
+	push_back(val1);
 }
 
-void PluginBase::AGS_EditorShutdown() {
+ScriptMethodParams::ScriptMethodParams(int val1, int val2) {
+	push_back(val1);
+	push_back(val2);
 }
 
-void PluginBase::AGS_EditorProperties(HWND) {
+ScriptMethodParams::ScriptMethodParams(int val1, int val2, int val3) {
+	push_back(val1);
+	push_back(val2);
+	push_back(val3);
 }
 
-int PluginBase::AGS_EditorSaveGame(char *, int) {
-	return 0;
+ScriptMethodParams::ScriptMethodParams(int val1, int val2, int val3, int val4) {
+	push_back(val1);
+	push_back(val2);
+	push_back(val3);
+	push_back(val4);
 }
 
-void PluginBase::AGS_EditorLoadGame(char *, int) {
-}
+#define GET_CHAR c = format[0]; format.deleteChar(0)
 
-void PluginBase::AGS_EngineStartup(IAGSEngine *) {
-}
+Common::String ScriptMethodParams::format(int formatIndex) {
+	Common::String result;
 
-void PluginBase::AGS_EngineShutdown() {
-}
+	Common::String format((const char *)(*this)[formatIndex]);
+	Common::String paramFormat;
+	char c;
+	++formatIndex;
 
-int64 PluginBase::AGS_EngineOnEvent(int, NumberPtr) {
-	return 0;
-}
+	while (!format.empty()) {
+		GET_CHAR;
 
-int PluginBase::AGS_EngineDebugHook(const char *, int, int) {
-	return 0;
-}
+		if (c != '%') {
+			result += c;
 
-void PluginBase::AGS_EngineInitGfx(const char *driverID, void *data) {
-	assert(!strcmp(driverID, "Software"));
+		} else if (format.hasPrefix("%")) {
+			GET_CHAR;
+			result += '%';
+
+		} else {
+			// Form up a format specifier
+			paramFormat = "%";
+			while (!format.empty()) {
+				GET_CHAR;
+				paramFormat += c;
+
+				if (Common::isAlpha(c))
+					break;
+			}
+
+			// Convert the parameter to a string. Not sure if all the
+			// casts are necessary, but it's better safe than sorry
+			// for big endian systems
+			switch (tolower(paramFormat.lastChar())) {
+			case 'c':
+				result += Common::String::format(paramFormat.c_str(), (char)(*this)[formatIndex]);
+				break;
+			case 's':
+			case 'p':
+				result += Common::String::format(paramFormat.c_str(), (void *)(*this)[formatIndex]);
+				break;
+			default:
+				result += Common::String::format(paramFormat.c_str(), (int)(*this)[formatIndex]);
+				break;
+			}
+
+			formatIndex++;
+		}
+	}
+
+	return result;
 }
 
 } // namespace Plugins

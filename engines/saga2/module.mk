@@ -2,7 +2,6 @@ MODULE := engines/saga2
 
 MODULE_OBJS := \
 	actor.o \
-	arrowptr.o \
 	assign.o \
 	audio.o \
 	automap.o \
@@ -11,6 +10,7 @@ MODULE_OBJS := \
 	blitters.o \
 	button.o \
 	calender.o \
+	console.o \
 	contain.o \
 	display.o \
 	dispnode.o \
@@ -30,7 +30,6 @@ MODULE_OBJS := \
 	interp.o \
 	intrface.o \
 	loadmsg.o \
-	loadsave.o \
 	magic.o \
 	main.o \
 	mainmap.o \
@@ -55,7 +54,7 @@ MODULE_OBJS := \
 	rect.o \
 	saga2.o \
 	sagafunc.o \
-	savefile.o \
+	saveload.o \
 	sensor.o \
 	shorten.o \
 	speech.o \

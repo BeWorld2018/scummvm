@@ -57,8 +57,7 @@ const int32 spellFailSound = 42;
  * ===================================================================== */
 
 extern WorldMapData                     *mapList;
-extern SpellDisplayList                 activeSpells;
-extern SpellStuff                       spellBook[];
+extern SpellStuff                       *spellBook;
 extern Point32                          lastMousePos;           // Last mouse position over map
 
 /* ===================================================================== *
@@ -95,15 +94,19 @@ GameObject *GetOwner(GameObject *go) {
 // This call looks up a spells object prototype. It can accept either
 //   an object ID or a spell ID
 SkillProto *skillProtoFromID(int16 spellOrObjectID) {
-	if (spellOrObjectID >= MAX_SPELLS)
+	if (spellOrObjectID > MAX_SPELLS)
 		return (SkillProto *)GameObject::protoAddress(spellOrObjectID);
+
+	if (spellOrObjectID >= totalSpellBookPages)
+		error("Wrong spellID: %d > %d", spellOrObjectID, totalSpellBookPages);
+
 	return spellBook[spellOrObjectID].getProto();
 }
 
 //-----------------------------------------------------------------------
 // initialization call to connect skill prototypes with their spells
 void initializeSkill(SkillProto *oNo, SpellID sNo) {
-	if (sNo > 0 && sNo < MAX_SPELLS) {
+	if (sNo > 0 && sNo < totalSpellBookPages) {
 		if (spellBook[sNo].getProto() != NULL)
 			error("Duplicate prototype for spell %d", sNo);
 		spellBook[sNo].setProto(oNo);
@@ -301,7 +304,7 @@ bool implementSpell(GameObject *enactor, Location   &target, SkillProto *spell) 
 		}
 	}
 
-	activeSpells.add(new SpellInstance(GetOwner(enactor), target, sProto.getDisplayID()));
+	g_vm->_activeSpells->add(new SpellInstance(GetOwner(enactor), target, sProto.getDisplayID()));
 	sProto.playSound(enactor);
 	return true;
 }
@@ -341,7 +344,7 @@ bool implementSpell(GameObject *enactor, ActiveItem *target, SkillProto *spell) 
 		}
 	}
 
-	activeSpells.add(new SpellInstance(GetOwner(enactor), l, sProto.getDisplayID()));
+	g_vm->_activeSpells->add(new SpellInstance(GetOwner(enactor), l, sProto.getDisplayID()));
 	sProto.playSound(enactor);
 	return true;
 }
@@ -379,7 +382,7 @@ bool implementSpell(GameObject *enactor, GameObject *target, SkillProto *spell) 
 		}
 	}
 
-	activeSpells.add(new SpellInstance(GetOwner(enactor), target, sProto.getDisplayID()));
+	g_vm->_activeSpells->add(new SpellInstance(GetOwner(enactor), target, sProto.getDisplayID()));
 	sProto.playSound(enactor);
 	return true;
 }

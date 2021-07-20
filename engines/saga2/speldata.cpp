@@ -94,14 +94,13 @@ StaticTilePoint SquareSpellVectors[32] = {
 extern hResContext              *spriteRes;             // sprite resource handle
 extern hResContext              *schemeRes;             // sprite resource handle
 extern ColorTable               identityColors;
-extern SpellDisplayList         activeSpells;
 
 /* ===================================================================== *
    Global data
  * ===================================================================== */
 
 SpriteSet                       *spellSprites;         // longsword test sprites
-SpellStuff                      spellBook[maxSpells];
+SpellStuff                      *spellBook;
 
 ColorTable                      spellColorMaps[maxSpellColorMaps];
 ColorSchemeList                 *spellSchemes;
@@ -126,6 +125,8 @@ void initMagic(void) {
 	g_vm->_edpList = new EffectDisplayPrototypeList(maxEffectPrototypes);
 	g_vm->_sdpList = new SpellDisplayPrototypeList(maxSpellPrototypes);
 
+	spellBook = new SpellStuff[maxSpells]();
+
 	defineEffects();
 	loadMagicData();
 
@@ -147,10 +148,12 @@ void initMagic(void) {
 
 
 void cleanupMagic(void) {
-	activeSpells.cleanup();
+	g_vm->_activeSpells->cleanup();
 	for (int i = 0; i < maxSpells; i++) {
 		spellBook[i].killEffects();
 	}
+	delete spellBook;
+
 	g_vm->_sdpList->cleanup();
 	g_vm->_edpList->cleanup();
 

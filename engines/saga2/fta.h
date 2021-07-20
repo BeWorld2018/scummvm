@@ -31,8 +31,6 @@
 
 namespace Saga2 {
 
-class SaveFileConstructor;
-class SaveFileReader;
 class hResContext;
 class hResource;
 
@@ -123,12 +121,7 @@ extern GameMode     IntroMode,
 //  Initialize the timer
 void initTimer(void);
 
-//  Save the timer to a save file
-void saveTimer(SaveFileConstructor &saveGame);
 void saveTimer(Common::OutSaveFile *out);
-
-//  Load the timer from a save file
-void loadTimer(SaveFileReader &saveGame);
 void loadTimer(Common::InSaveFile *in);
 
 //  Cleanup the timer -- nothing to do
@@ -141,13 +134,16 @@ void resumeTimer(void);                  // resume game clock
 //  work correctly even if the game counter wraps around.
 
 class Alarm {
-private:
+public:
 	uint32 basetime;                            // timer alarm was set
 	uint32 duration;                            // duration of alarm
-public:
+
 	void set(uint32 duration);
 	bool check(void);
 	uint32 elapsed(void);                    // time elapsed since alarm set
+
+	void write(Common::MemoryWriteStreamDynamic *out);
+	void read(Common::InSaveFile *in);
 };
 
 /* ===================================================================== *
@@ -193,9 +189,7 @@ void cleanupPathFinder(void);
  * ===================================================================== */
 
 void initGlobals(void);
-void saveGlobals(SaveFileConstructor &saveGame);
-void saveGlobals(Common::OutSaveFile *out);
-void loadGlobals(SaveFileReader &saveGame);
+void saveGlobals(Common::OutSaveFile *outS);
 void loadGlobals(Common::InSaveFile *in);
 inline void cleanupGlobals(void) {}      // do nothing
 
@@ -231,8 +225,6 @@ extern int16            extendedThreadLevel;
  * ===================================================================== */
 
 extern bool         gameRunning;            // true while game running
-
-extern gMousePointer pointer;               // the mouse pointer
 
 extern volatile int32 gameTime;             // current timer
 

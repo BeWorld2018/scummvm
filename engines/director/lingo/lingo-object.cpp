@@ -22,6 +22,8 @@
 
 #include "common/endian.h"
 
+#include "graphics/macgui/mactext.h"
+
 #include "director/director.h"
 #include "director/cast.h"
 #include "director/channel.h"
@@ -32,11 +34,13 @@
 #include "director/lingo/lingo-code.h"
 #include "director/lingo/lingo-object.h"
 #include "director/lingo/lingo-the.h"
+
 #include "director/lingo/xlibs/fileio.h"
-#include "director/lingo/xlibs/palxobj.h"
 #include "director/lingo/xlibs/flushxobj.h"
+#include "director/lingo/xlibs/fplayxobj.h"
+#include "director/lingo/xlibs/labeldrvxobj.h"
+#include "director/lingo/xlibs/palxobj.h"
 #include "director/lingo/xlibs/winxobj.h"
-#include "graphics/macgui/mactext.h"
 
 namespace Director {
 
@@ -106,9 +110,11 @@ static struct XLibProto {
 	int type;
 	int version;
 } xlibs[] = {
-	{ "FileIO",					FileIO::initialize,					kXObj | kFactoryObj,	200 },	// D2
+	{ "FileIO",					FileIO::initialize,					kXObj | kXtraObj,		200 },	// D2
 	{ "FlushXObj",				FlushXObj::initialize,				kXObj,					400 },	// D4
+	{ "FPlayXObj",				FPlayXObj::initialize,				kXObj,					200 },	// D2
 	{ "PalXObj",				PalXObj:: initialize,				kXObj,					400 }, 	// D4
+	{ "LabelDrv",				LabelDrvXObj:: initialize,			kXObj,					400 }, 	// D4
 	{ "winXObj",				RearWindowXObj::initialize,			kXObj,					400 },	// D4
 	{ 0, 0, 0, 0 }
 
@@ -670,7 +676,7 @@ bool CastMember::setField(int field, const Datum &d) {
 			warning("CastMember::setField(): CastMember info for %d not found", _castId);
 			return false;
 		}
-		_cast->_lingoArchive->addCode(d.u.s->c_str(), kCastScript, _castId);
+		_cast->_lingoArchive->addCode(*d.u.s, kCastScript, _castId);
 		castInfo->script = d.asString();
 		return true;
 	case kTheWidth:
@@ -877,7 +883,7 @@ Datum TextCastMember::getField(int field) {
 		d = _hilite;
 		break;
 	case kTheText:
-		d = getText();
+		d = getText().encode(Common::kUtf8);
 		break;
 	case kTheTextAlign:
 		d.type = STRING;
@@ -931,14 +937,13 @@ bool TextCastMember::setField(int field, const Datum &d) {
 		return true;
 	case kTheHilite:
 		// TODO: Understand how texts can be selected programmatically as well.
-		if (_type == kCastButton) {
-			_hilite = (bool)d.asInt();
-			_modified = true;
-			return true;
-		}
+		// since hilite won't affect text castmember, and we may have button info in text cast in D2/3. so don't check type here
+		_hilite = (bool)d.asInt();
+		_modified = true;
+		return true;
 		break;
 	case kTheText:
-		setText(d.asString().c_str());
+		setText(d.asString());
 		return true;
 	case kTheTextAlign:
 		{

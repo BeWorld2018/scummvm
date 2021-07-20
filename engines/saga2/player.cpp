@@ -24,8 +24,6 @@
  *   (c) 1993-1996 The Wyrmkeep Entertainment Co.
  */
 
-#define FORBIDDEN_SYMBOL_ALLOW_ALL // FIXME: Remove
-
 #include "saga2/saga2.h"
 #include "saga2/intrface.h"
 #include "saga2/contain.h"
@@ -33,7 +31,6 @@
 #include "saga2/motion.h"
 #include "saga2/transit.h"
 #include "saga2/localize.h"
-#include "saga2/savefile.h"
 
 namespace Saga2 {
 
@@ -69,14 +66,6 @@ static PlayerActorID    centerActor;        //  Index of the current center
 //  actor
 
 bool                    brotherBandingEnabled;
-
-//  Master list of all playerActor structures
-PlayerActor playerList[playerActors] = {
-	PlayerActor(ActorBaseID +  0),       //  Julian
-	PlayerActor(ActorBaseID +  1),       //  Philip
-	PlayerActor(ActorBaseID +  2),       //  Kevin
-};
-
 
 /* ===================================================================== *
    Methods
@@ -354,7 +343,7 @@ void PlayerActor::skillAdvance(uint8 stat,
 
 void PlayerActor::vitalityAdvance(uint8 points) {
 	while (points-- > 0) {
-		if (g_vm->_rnd->getRandomNumber(ActorAttributes::vitalityLimit - 1) > baseStats.vitality) {
+		if ((int16)g_vm->_rnd->getRandomNumber(ActorAttributes::vitalityLimit - 1) > baseStats.vitality) {
 			if (++vitalityMemory >= vitalityLevelBump) {
 				vitalityMemory -= vitalityLevelBump;
 				baseStats.vitality++;
@@ -510,30 +499,35 @@ void PlayerActor::handleAttacked(void) {
 //	Return a pointer to a PlayerActor given it's ID
 
 PlayerActor *getPlayerActorAddress(PlayerActorID id) {
-	assert(id >= 0 && id < ARRAYSIZE(playerList));
+	assert(id >= 0 && id < (int)g_vm->_playerList.size());
 
-	return &playerList[id];
+	return g_vm->_playerList[id];
 }
 
 //-----------------------------------------------------------------------
 //	Return a PlayerActor ID given it's address
 
 PlayerActorID getPlayerActorID(PlayerActor *p) {
-	return p - playerList;
+	for (int i = 0; i < (int)g_vm->_playerList.size(); ++i) {
+		if (g_vm->_playerList[i] == p)
+			return i;
+	}
+
+	return -1;
 }
 
 //-----------------------------------------------------------------------
 //	Return a pointer the center actor's Actor structure
 
 Actor *getCenterActor(void) {
-	return playerList[centerActor].getActor();
+	return g_vm->_playerList[centerActor]->getActor();
 }
 
 //-----------------------------------------------------------------------
 //  Return the center actor's object ID
 
 ObjectID getCenterActorID(void) {
-	return playerList[centerActor].getActorID();
+	return ActorBaseID + centerActor;
 }
 
 //-----------------------------------------------------------------------
@@ -549,9 +543,9 @@ PlayerActorID getCenterActorPlayerID(void) {
 void setCenterActor(PlayerActorID newCenter) {
 	extern void setEnchantmentDisplay(void);
 
-	assert(newCenter < playerActors);
+	assert(newCenter < kPlayerActors);
 
-	Actor                       *a = playerList[newCenter].getActor();
+	Actor                       *a = g_vm->_playerList[newCenter]->getActor();
 	PlayerActorIterator         iter;
 	PlayerActor                 *player;
 
@@ -567,7 +561,7 @@ void setCenterActor(PlayerActorID newCenter) {
 	}
 
 	centerActor = newCenter;
-	viewCenterObject = playerList[centerActor].getActorID();
+	viewCenterObject = g_vm->_playerList[centerActor]->getActorID();
 
 	indivReadyNode->changeOwner(newCenter);
 	g_vm->_containerList->setPlayerNum(newCenter);
@@ -580,7 +574,7 @@ void setCenterActor(PlayerActorID newCenter) {
 	}
 
 	//  Set the new centers fight stance based upon his aggression state
-	a->setFightStance(playerList[newCenter].isAggressive());
+	a->setFightStance(g_vm->_playerList[newCenter]->isAggressive());
 
 	// band actors to new center if banding button set
 	for (player = iter.first(); player != NULL; player = iter.next()) {
@@ -603,8 +597,8 @@ void setCenterActor(Actor *newCenter) {
 //	Set a new center actor based upon a PlayerActor address
 
 void setCenterActor(PlayerActor *newCenter) {
-	assert(newCenter >= playerList && newCenter < &playerList[playerActors]);
-	setCenterActor(newCenter - playerList);
+	assert(getPlayerActorID(newCenter) >= 0);
+	setCenterActor(getPlayerActorID(newCenter));
 }
 
 //-----------------------------------------------------------------------
@@ -613,7 +607,7 @@ void setCenterActor(PlayerActor *newCenter) {
 TilePoint centerActorCoords(void) {
 	Actor           *a;
 
-	a = playerList[centerActor].getActor();
+	a = g_vm->_playerList[centerActor]->getActor();
 	return a->getLocation();
 }
 
@@ -622,16 +616,16 @@ TilePoint centerActorCoords(void) {
 //	Set or clear a player's aggressive state
 
 void setAggression(PlayerActorID player, bool aggression) {
-	assert(player >= 0 && player < playerActors);
+	assert(player >= 0 && player < kPlayerActors);
 
-	Actor       *a = playerList[player].getActor();
+	Actor       *a = g_vm->_playerList[player]->getActor();
 
 	if (a->isDead()) return;
 
 	if (aggression)
-		playerList[player].setAggression();
+		g_vm->_playerList[player]->setAggression();
 	else
-		playerList[player].clearAggression();
+		g_vm->_playerList[player]->clearAggression();
 
 	if (player == centerActor)
 		a->setFightStance(aggression);
@@ -645,8 +639,8 @@ void setAggression(PlayerActorID player, bool aggression) {
 //	Determine if player actor is in an aggressive state
 
 bool isAggressive(PlayerActorID player) {
-	assert(player >= 0 && player < playerActors);
-	return playerList[player].isAggressive();
+	assert(player >= 0 && player < kPlayerActors);
+	return g_vm->_playerList[player]->isAggressive();
 }
 
 //-----------------------------------------------------------------------
@@ -657,12 +651,12 @@ void autoAdjustAggression(void) {
 	PlayerActorID       i;
 
 	//  Iterate through all player actors
-	for (i = 0; i < playerActors; i++) {
+	for (i = 0; i < kPlayerActors; i++) {
 		if (i == centerActor || isBanded(i)) {
 			bool            enemiesPresent = false;
-			Actor           *actor = playerList[i].getActor();
+			Actor           *actor = g_vm->_playerList[i]->getActor();
 
-			if (actor->getStats()->vitality >= minAutoAggressionVitality) {
+			if (actor->getStats()->vitality >= kMinAutoAggressionVitality) {
 				GameObject      *obj;
 				ActiveRegion    *activeReg = getActiveRegion(i);
 				TileRegion      region = activeReg->getRegion();
@@ -697,16 +691,16 @@ void autoAdjustAggression(void) {
 //	Set a player actor's banding
 
 void setBanded(PlayerActorID player, bool banded) {
-	assert(player >= 0 && player < playerActors);
+	assert(player >= 0 && player < kPlayerActors);
 
-	if (playerList[player].getActor()->isDead()) return;
+	if (g_vm->_playerList[player]->getActor()->isDead()) return;
 
 	if (banded)
-		playerList[player].setBanded();
+		g_vm->_playerList[player]->setBanded();
 	else
-		playerList[player].clearBanded();
+		g_vm->_playerList[player]->clearBanded();
 
-	playerList[player].resolveBanding();
+	g_vm->_playerList[player]->resolveBanding();
 
 	updateBrotherBandingButton(player, banded);
 }
@@ -715,8 +709,8 @@ void setBanded(PlayerActorID player, bool banded) {
 //	Determine if a player actor is banded
 
 bool isBanded(PlayerActorID player) {
-	assert(player >= 0 && player < playerActors);
-	return playerList[player].isBanded();
+	assert(player >= 0 && player < kPlayerActors);
+	return g_vm->_playerList[player]->isBanded();
 }
 
 //-----------------------------------------------------------------------
@@ -785,7 +779,7 @@ bool actorIDToPlayerID(ObjectID id, PlayerActorID &result) {
 }
 
 void handlePlayerActorDeath(PlayerActorID id) {
-	assert(id >= 0 && id < playerActors);
+	assert(id >= 0 && id < kPlayerActors);
 
 	if (getCenterActor()->isDead()) {
 		PlayerActor                 *newCenter;
@@ -797,7 +791,7 @@ void handlePlayerActorDeath(PlayerActorID id) {
 			allPlayerActorsDead = true;
 	}
 
-	PlayerActor     *player = &playerList[id];
+	PlayerActor     *player = g_vm->_playerList[id];
 
 	player->clearAggression();
 	player->clearBanded();
@@ -874,8 +868,8 @@ void handleEndOfCombat(void) {
 	PlayerActorID       i;
 
 	//  Iterate through all player actors
-	for (i = 0; i < playerActors; i++)
-		playerList[i].resetAttackNotification();
+	for (i = 0; i < kPlayerActors; i++)
+		g_vm->_playerList[i]->resetAttackNotification();
 }
 
 /* ======================================================================= *
@@ -901,10 +895,12 @@ struct PlayerActorArchive {
 //	Initialize the player list
 
 void initPlayerActors(void) {
-	PlayerActorID   i;
+	g_vm->_playerList.push_back(new PlayerActor(ActorBaseID + 0)); // Julian
+	g_vm->_playerList.push_back(new PlayerActor(ActorBaseID + 1)); // Philip
+	g_vm->_playerList.push_back(new PlayerActor(ActorBaseID + 2)); // Kevin
 
-	for (i = 0; i < playerActors; i++) {
-		PlayerActor     *p = &playerList[i];
+	for (int i = 0; i < kPlayerActors; i++) {
+		PlayerActor     *p = g_vm->_playerList[i];
 		Actor           *a = p->getActor();
 		ActorProto      *proto = (ActorProto *)a->proto();
 
@@ -938,95 +934,86 @@ void initPlayerActors(void) {
 	readyContainerSetup();
 }
 
-//-----------------------------------------------------------------------
-//	Save the player list data to a save file
+void savePlayerActors(Common::OutSaveFile *outS) {
+	debugC(2, kDebugSaveload, "Saving PlayerActors");
 
-void savePlayerActors(SaveFileConstructor &saveGame) {
-	int16                   i;
-	PlayerActorArchive      archiveBuffer[playerActors];
+	outS->write("PLYR", 4);
+	CHUNK_BEGIN;
+	for (int i = 0; i < kPlayerActors; i++) {
+		debugC(3, kDebugSaveload, "Saving PlayerActor %d", i);
 
-	for (i = 0; i < playerActors; i++) {
-		PlayerActor         *p = &playerList[i];
-		PlayerActorArchive  *a = &archiveBuffer[i];
+		PlayerActor *p = g_vm->_playerList[i];
 
 		//  Store the portrait type
-		a->portraitType = p->portraitType;
+		out->writeSint16LE(p->portraitType);
 
 		//  Store the flags
-		a->flags = p->flags;
+		out->writeUint16LE(p->flags);
 
 		//  Store the base stats
-		memcpy(&a->baseStats, &p->baseStats, sizeof(a->baseStats));
+		p->baseStats.write(out);
 
 		//  Store accumulation arrays
-		memcpy(
-		    &a->manaMemory,
-		    &p->manaMemory,
-		    sizeof(a->manaMemory));
-		memcpy(
-		    &a->attribRecPools,
-		    &p->attribRecPools,
-		    sizeof(a->attribRecPools));
-		memcpy(
-		    &a->attribMemPools,
-		    &p->attribMemPools,
-		    sizeof(a->attribMemPools));
+		for (int j = 0; j < numManas; ++j)
+			out->writeSint16LE(p->manaMemory[j]);
+
+		for (int j = 0; j < numSkills; ++j)
+			out->writeByte(p->attribRecPools[j]);
+
+		for (int j = 0; j < numSkills; ++j)
+			out->writeByte(p->attribMemPools[j]);
 
 		//  Store the vitality memory
-		a->vitalityMemory = p->vitalityMemory;
+		out->writeByte(p->vitalityMemory);
 
 		//  Store the attack notification flag
-		a->notifiedOfAttack = p->notifiedOfAttack;
-	}
+		out->writeUint16LE(p->notifiedOfAttack);
 
-	//  Write the player actor chunk
-	saveGame.writeChunk(
-	    MakeID('P', 'L', 'Y', 'R'),
-	    archiveBuffer,
-	    sizeof(archiveBuffer));
+		debugC(4, kDebugSaveload, "... playerList[%d].portraitType = %d", i, p->portraitType);
+		debugC(4, kDebugSaveload, "... playerList[%d].flags = %d", i, p->flags);
+		debugC(4, kDebugSaveload, "... playerList[%d].vitalityMemory = %d", i, p->vitalityMemory);
+		debugC(4, kDebugSaveload, "... playerList[%d].notifiedOfAttack = %d", i, p->notifiedOfAttack);
+	}
+	CHUNK_END;
 }
 
-//-----------------------------------------------------------------------
-//	Load the player list data from a save file
+void loadPlayerActors(Common::InSaveFile *in) {
+	debugC(2, kDebugSaveload, "Loading PlayerActors");
 
-void loadPlayerActors(SaveFileReader &saveGame) {
-	int16                   i;
-	PlayerActorArchive      archiveBuffer[playerActors];
+	for (int i = 0; i < kPlayerActors; i++) {
+		debugC(3, kDebugSaveload, "Loading PlayerActor %d", i);
 
-	saveGame.read(archiveBuffer, sizeof(archiveBuffer));
-
-	for (i = 0; i < playerActors; i++) {
-		PlayerActor         *p = &playerList[i];
-		PlayerActorArchive  *a = &archiveBuffer[i];
+		PlayerActor *p = g_vm->_playerList[i];
 
 		//  Restore the portrait type
-		p->portraitType = a->portraitType;
+		p->portraitType = in->readSint16LE();
 
 		//  Restore the flags
-		p->flags = a->flags;
+		p->flags = in->readUint16LE();
 
 		//  Restore the base stats
-		memcpy(&p->baseStats, &a->baseStats, sizeof(p->baseStats));
+		p->baseStats.read(in);
 
 		//  Restore the accumulation arrays
-		memcpy(
-		    &p->manaMemory,
-		    &a->manaMemory,
-		    sizeof(p->manaMemory));
-		memcpy(
-		    &p->attribRecPools,
-		    &a->attribRecPools,
-		    sizeof(p->attribRecPools));
-		memcpy(
-		    &p->attribMemPools,
-		    &a->attribMemPools,
-		    sizeof(p->attribMemPools));
+		for (int j = 0; j < numManas; ++j)
+			p->manaMemory[j] = in->readSint16LE();
+
+		for (int j = 0; j < numSkills; ++j)
+			p->attribRecPools[j] = in->readByte();
+
+		for (int j = 0; j < numSkills; ++j)
+			p->attribMemPools[j] = in->readByte();
 
 		//  Restore the vitality memory
-		p->vitalityMemory = a->vitalityMemory;
+		p->vitalityMemory = in->readByte();
 
 		//  Restore the attack notification flag
-		p->notifiedOfAttack = a->notifiedOfAttack;
+		p->notifiedOfAttack = in->readUint16LE();
+
+		debugC(4, kDebugSaveload, "... playerList[%d].portraitType = %d", i, p->portraitType);
+		debugC(4, kDebugSaveload, "... playerList[%d].flags = %d", i, p->flags);
+		debugC(4, kDebugSaveload, "... playerList[%d].vitalityMemory = %d", i, p->vitalityMemory);
+		debugC(4, kDebugSaveload, "... playerList[%d].notifiedOfAttack = %d", i, p->notifiedOfAttack);
 	}
 
 	readyContainerSetup();
@@ -1055,36 +1042,35 @@ struct CenterActorArchive {
 
 void initCenterActor(void) {
 	centerActor = FTA_JULIAN;
-	viewCenterObject = playerList[centerActor].getActorID();
+	viewCenterObject = g_vm->_playerList[centerActor]->getActorID();
 
 	// clear the last center actor's button state
 	updateBrotherRadioButtons(FTA_JULIAN);
 }
 
-//-----------------------------------------------------------------------
-//	Save the center actor ID and the view object ID to a save file
+void saveCenterActor(Common::OutSaveFile *outS) {
+	debugC(2, kDebugSaveload, "Saving CenterActor");
 
-void saveCenterActor(SaveFileConstructor &saveGame) {
-	CenterActorArchive  a;
-
+	outS->write("CNTR", 4);
+	CHUNK_BEGIN;
 	//  Store the center actor and view object
-	a.centerActor       = centerActor;
-	a.viewCenterObject  = viewCenterObject;
+	out->writeSint16LE(centerActor);
+	out->writeUint16LE(viewCenterObject);
+	CHUNK_END;
 
-	saveGame.writeChunk(MakeID('C', 'N', 'T', 'R'), &a, sizeof(a));
+	debugC(3, kDebugSaveload, "... centerActor = %d", centerActor);
+	debugC(3, kDebugSaveload, "... viewCenterObject = %d", viewCenterObject);
 }
 
-//-----------------------------------------------------------------------
-//	Load the center actor ID and the view object ID from the save file
-
-void loadCenterActor(SaveFileReader &saveGame) {
-	CenterActorArchive  a;
-
-	saveGame.read(&a, sizeof(a));
+void loadCenterActor(Common::InSaveFile *in) {
+	debugC(2, kDebugSaveload, "Loading CenterActor");
 
 	//  Restore the center actor and view object
-	centerActor         = a.centerActor;
-	viewCenterObject    = a.viewCenterObject;
+	centerActor = in->readSint16LE();
+	viewCenterObject = in->readUint16LE();
+
+	debugC(3, kDebugSaveload, "... centerActor = %d", centerActor);
+	debugC(3, kDebugSaveload, "... viewCenterObject = %d", viewCenterObject);
 }
 
 //-----------------------------------------------------------------------
@@ -1092,11 +1078,11 @@ void loadCenterActor(SaveFileReader &saveGame) {
 
 PlayerActor *PlayerActorIterator::first(void) {
 	index = 0;
-	return &playerList[index++];
+	return g_vm->_playerList[index++];
 }
 
 PlayerActor *PlayerActorIterator::next(void) {
-	return (index < playerActors) ? &playerList[index++] : NULL;
+	return (index < kPlayerActors) ? g_vm->_playerList[index++] : NULL;
 }
 
 //-----------------------------------------------------------------------
@@ -1108,18 +1094,18 @@ PlayerActor *LivingPlayerActorIterator::first(void) {
 }
 
 PlayerActor *LivingPlayerActorIterator::next(void) {
-	if (index >= playerActors)
+	if (index >= kPlayerActors)
 		return nullptr;
 
-	Actor       *a = playerList[index].getActor();
+	Actor       *a = g_vm->_playerList[index]->getActor();
 
 	while (a == nullptr || a->isDead()) {
-		if (++index >= playerActors)
+		if (++index >= kPlayerActors)
 			break;
-		a = playerList[index].getActor();
+		a = g_vm->_playerList[index]->getActor();
 	}
 
-	return (index < playerActors) ? &playerList[index++] : nullptr;
+	return (index < kPlayerActors) ? g_vm->_playerList[index++] : nullptr;
 }
 
 } // end of namespace Saga2

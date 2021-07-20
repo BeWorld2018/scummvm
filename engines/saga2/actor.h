@@ -27,8 +27,8 @@
 #ifndef SAGA2_ACTOR_H
 #define SAGA2_ACTOR_H
 
-#include "common/savefile.h"
 #include "saga2/objects.h"
+#include "saga2/saveload.h"
 
 namespace Saga2 {
 
@@ -171,31 +171,31 @@ struct ActorAttributes {
 		return skill(id) / skillFracPointsPerLevel + 1;
 	}
 
-	void load(Common::SeekableReadStream *stream) {
-		archery = stream->readByte();
-		swordcraft = stream->readByte();
-		shieldcraft = stream->readByte();
-		bludgeon = stream->readByte();
-		throwing = stream->readByte();
-		spellcraft = stream->readByte();
-		stealth = stream->readByte();
-		agility = stream->readByte();
-		brawn = stream->readByte();
-		lockpick = stream->readByte();
-		pilfer = stream->readByte();
-		firstAid = stream->readByte();
-		spotHidden = stream->readByte();
-		pad = stream->readSByte();
-		vitality = stream->readSint16LE();
-		redMana = stream->readSint16LE();
-		orangeMana = stream->readSint16LE();
-		yellowMana = stream->readSint16LE();
-		greenMana = stream->readSint16LE();
-		blueMana = stream->readSint16LE();
-		violetMana = stream->readSint16LE();
+	void read(Common::InSaveFile *in) {
+		archery = in->readByte();
+		swordcraft = in->readByte();
+		shieldcraft = in->readByte();
+		bludgeon = in->readByte();
+		throwing = in->readByte();
+		spellcraft = in->readByte();
+		stealth = in->readByte();
+		agility = in->readByte();
+		brawn = in->readByte();
+		lockpick = in->readByte();
+		pilfer = in->readByte();
+		firstAid = in->readByte();
+		spotHidden = in->readByte();
+		pad = in->readSByte();
+		vitality = in->readSint16LE();
+		redMana = in->readSint16LE();
+		orangeMana = in->readSint16LE();
+		yellowMana = in->readSint16LE();
+		greenMana = in->readSint16LE();
+		blueMana = in->readSint16LE();
+		violetMana = in->readSint16LE();
 	}
 
-	void write(Common::OutSaveFile *out) {
+	void write(Common::MemoryWriteStreamDynamic *out) {
 		out->writeByte(archery);
 		out->writeByte(swordcraft);
 		out->writeByte(shieldcraft);
@@ -261,7 +261,7 @@ struct ResourceActorProtoExtension {
 	}
 
 	void load(Common::SeekableReadStream *stream) {
-		baseStats.load(stream);
+		baseStats.read(stream);
 		combatBehavior = stream->readByte();
 		gruntStyle = stream->readByte();
 		baseEffectFlags = stream->readUint32LE();
@@ -700,6 +700,7 @@ public:
 
 	Actor           *leader;                // This actor's leader
 	Band            *followers;             // This actor's band of followers
+	BandID          _followersID;
 
 	ObjectID        armorObjects[ARMOR_COUNT];    //  armor objects being worn
 
@@ -727,9 +728,6 @@ public:
 	//  Constructor - initial actor construction
 	Actor(const ResourceActor &res);
 
-	//  Reconstruct from archive buffer
-	Actor(void **buf);
-
 	Actor(Common::InSaveFile *in);
 
 	//  Destructor
@@ -738,10 +736,7 @@ public:
 	//  Return the number of bytes needed to archive this actor
 	int32 archiveSize(void);
 
-	//  Archive this actor in a buffer
-	void *archive(void *buf);
-
-	void write(Common::OutSaveFile *out);
+	void write(Common::MemoryWriteStreamDynamic *out);
 
 	static Actor *newActor(
 	    int16   protoNum,
@@ -921,7 +916,7 @@ public:
 	void updateAppearance(int32 deltaTime);
 
 	//  Used To Find Wait State When Preffered Not Available
-	bool SetAvailableAction(int16, ...);
+	bool setAvailableAction(int16 action1, int16 action2, int16 action3, int16 actiondefault);
 
 	//  Set the current animation sequence that the actor is doing.
 	//  Returns the number of poses in the sequence, or 0 if there
@@ -1124,10 +1119,10 @@ int16 AddFactionTally(int faction, enum factionTallyTypes act, int amt);
 void initFactionTallies(void);
 
 //  Save the faction tallies to a save file
-void saveFactionTallies(SaveFileConstructor &saveGame);
+void saveFactionTallies(Common::OutSaveFile *outS);
 
 //  Load the faction tallies from a save file
-void loadFactionTallies(SaveFileReader &saveGame);
+void loadFactionTallies(Common::InSaveFile *in);
 
 //  Cleanup the faction tally table
 inline void cleanupFactionTallies(void) { /* Nothing to do */ }

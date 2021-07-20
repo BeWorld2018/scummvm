@@ -169,6 +169,7 @@ static const char *const selectorNameTable[] = {
 	"track",        // Phant2
 	"update",       // Phant2
 	"xOff",         // Phant2
+	"eachElementDo",// KQ7
 	"fore",         // KQ7
 	"back",         // KQ7
 	"font",         // KQ7
@@ -294,6 +295,7 @@ enum ScriptPatcherSelectors {
 	SELECTOR_track,
 	SELECTOR_update,
 	SELECTOR_xOff,
+	SELECTOR_eachElementDo,
 	SELECTOR_fore,
 	SELECTOR_back,
 	SELECTOR_font,
@@ -5716,70 +5718,6 @@ static const uint16 kq6PatchTruncatedMessagesFix[] = {
 	PATCH_END
 };
 
-// Clicking Look or Do on the secret passage peephole outside of Cassima's room
-//  multiple times can lockup the game and crash the original.
-//
-// The bug is in the Feature and CueObj classes but room 800 and cassimaScript
-//  happen to expose it. Clicking on a Feature such as the hole causes ego to
-//  walk towards it, then face it, wait three cycles, and then call doVerb.
-//  Feature:handleEvent calls ego:setMotion and then has CueObj orchestrate the
-//  rest of the sequence. If ego is instead already within approachDist and
-//  facing the clicked Feature then handleEvent sets CueObj to its final state
-//  so that doVerb is called immediately. handleEvent resets CueObj's state and
-//  stops any ego movement to prevent a conflict from an earlier call but it
-//  doesn't stop ego's looper from turning to face the Feature. Clicking on a
-//  Feature while ego is within approachDist and in the process of turning to
-//  face that Feature from a previous click causes both clicks to generate calls
-//  to doVerb, and out of order. In room 800 that causes cassimaScript to run a
-//  a second time and interrupt the first which breaks the game in various ways.
-//
-// We fix room 800 by adding a check to prevent running a peephole script if
-//  there's already a script running.
-//
-// Applies to: All versions
-// Responsible method: chink:doVerb
-static const uint16 kq6SignatureCassimaSecretPassage[] = {
-	SIG_MAGICDWORD,
-	0x67, 0x1a,                         // pTos noun
-	0x3c,                               // dup
-	0x35, 0x04,                         // ldi 04
-	0x1a,                               // eq?
-	0x31, 0x12,                         // bnt 12
-	0x38, SIG_SELECTOR16(setScript),    // pushi setScript
-	0x78,                               // push1
-	0x78,                               // push1
-	0x38, SIG_UINT16(0x0321),           // pushi 0321
-	0x43, 0x02, 0x02,                   // callk ScriptID 02 [ ScriptID 801 ]
-	0x36,                               // push
-	0x81, 0x02,                         // lag 02
-	0x4a, 0x06,                         // send 06 [ rm800 setScript: cassimaScript ]
-	0x33, 0x10,                         // jmp 10
-	0x38, SIG_SELECTOR16(setScript),    // pushi setScript
-	SIG_ADDTOOFFSET(+5),
-	0x43, 0x02, 0x02,                   // callk ScriptID 02 [ ScriptID 802 ]
-	SIG_END
-};
-
-static const uint16 kq6PatchCassimaSecretPassage[] = {
-	0x38, PATCH_SELECTOR16(script),     // pushi script
-	0x76,                               // push0
-	0x81, 0x02,                         // lag 02
-	0x4a, 0x04,                         // send 04 [ rm800 script? ]
-	0x31, 0x01,                         // bnt 01
-	0x48,                               // ret [ do nothing if script is running ]
-	0x67, 0x1a,                         // pTos noun
-	0x3c,                               // dup
-	0x35, 0x04,                         // ldi 04
-	0x1a,                               // eq?
-	0x38, PATCH_SELECTOR16(setScript),  // pushi setScript
-	0x31, 0x07,                         // bnt 07
-	0x78,                               // push1
-	0x78,                               // push1
-	0x38, PATCH_UINT16(0x0321),         // pushi 0321
-	0x33, 0x05,                         // jmp 05 [ callk ScriptID 02 ]
-	PATCH_END
-};
-
 // WORKAROUND
 //
 // Dangling Participle and Rotten Tomato are inventory items that can talk, but
@@ -6458,6 +6396,44 @@ static const uint16 kq6PatchGuardDogMusic[] = {
 	PATCH_END
 };
 
+// Quickly clicking on certain Features multiple times can lockup and crash the
+//  the game. Examples: giving the rose to Beauty and looking at the peephole in
+//  the passage outside of Cassima's room. This also occurs in the original.
+//
+// The bug is in the Feature and CueObj classes but only a few Features are
+//  vulnerable. Factors include approach properties (coordinates, dist), the
+//  surrounding obstacles, and timing. Clicking on a Feature causes ego to walk
+//  towards it, turn towards it, wait three cycles, and then call doVerb. CueObj
+//  handles most of this sequence. However, if ego is already close to the
+//  Feature, then CueObj is advanced to its final state to immediately call
+//  doVerb. The problem is that this doesn't take into account that ego might be
+//  in the middle of turning. If a second click occurs while ego is turning from
+//  the first click, doVerb will be called immediately, CueObj will be reset to
+//  its initial state, and then ego's turn will complete and CueObj will proceed
+//  to call doVerb again. If doVerb runs a hands-off script then it will be
+//  interrupted and restarted at which point the game breaks in various ways.
+//
+// We fix this by removing a simple line that resets CueObj to its initial state
+//  after it calls Feature:doVerb. Nothing depends on this; every caller resets
+//  CueObj:state explicitly. But without this line, a stray cue from ego turning
+//  will advance CueObj from its final state (three) to an unused state (four)
+//  where it will have no effect. Although this buggy Feature script is in other
+//  games, so far it's only known to cause problems in KQ6.
+//
+// Applies to: All versions
+// Responsible method: CueObj:changeState(3)
+static const uint16 kq6SignatureFeatureEventHandling[] = {
+	SIG_MAGICDWORD,
+	0x35, 0x00,                         // ldi 00
+	0x65, 0x14,                         // atop state [ state = 0 ]
+	SIG_END
+};
+
+static const uint16 kq6PatchFeatureEventHandling[] = {
+	0x33, 0x02,                         // jmp 02 [ don't reset CueObj state ]
+	PATCH_END
+};
+
 //          script, description,                                      signature                                 patch
 static const SciScriptPatcherEntry kq6Signatures[] = {
 	{  true,    52, "CD: Girl In The Tower playback",                 1, kq6CDSignatureGirlInTheTowerPlayback,     kq6CDPatchGirlInTheTowerPlayback },
@@ -6477,12 +6453,12 @@ static const SciScriptPatcherEntry kq6Signatures[] = {
 	{  true,   481, "fix duplicate baby tears point",                 1, kq6SignatureDuplicateBabyTearsPoint,      kq6PatchDuplicateBabyTearsPoint },
 	{  true,   640, "fix 'Tickets Only' audio timing",                1, kq6CDSignatureTicketsOnlyAudioTiming,     kq6CDPatchTicketsOnlyAudioTiming },
 	{  true,   745, "fix wedding genie lamp message",                 1, kq6SignatureWeddingGenieLampMessage,      kq6PatchWeddingGenieLampMessage },
-	{  true,   800, "fix Cassima secret passage peephole",            1, kq6SignatureCassimaSecretPassage,         kq6PatchCassimaSecretPassage },
 	{  true,   907, "fix inventory stack leak",                       1, kq6SignatureInventoryStackFix,            kq6PatchInventoryStackFix },
 	{  true,   907, "fix hair detection for ribbon's look msg",       1, kq6SignatureLookRibbonFix,                kq6PatchLookRibbonFix },
 	{  true,   907, "talking inventory workaround",                   4, kq6SignatureTalkingInventory,             kq6PatchTalkingInventory },
 	{  true,   924, "CD/Mac: fix truncated messages",                 1, kq6SignatureTruncatedMessagesFix,         kq6PatchTruncatedMessagesFix },
 	{  true,   928, "Narrator lockup fix",                            1, sciNarratorLockupSignature,               sciNarratorLockupPatch },
+	{  true,   950, "fix Feature event handling",                     1, kq6SignatureFeatureEventHandling,         kq6PatchFeatureEventHandling },
 	// King's Quest 6 and Laura Bow 2 share basic patches for audio + text support
 	// *** King's Quest 6 audio + text support ***
 	{ false,   924, "CD: audio + text support KQ6&LB2 1",             1, kq6laurabow2CDSignatureAudioTextSupport1,     kq6laurabow2CDPatchAudioTextSupport1 },
@@ -6845,12 +6821,169 @@ static const uint16 kq7OpeningCartoonPatch[] = {
 	PATCH_END
 };
 
+// In chapter one, moving the top gem in the statue all the way to the right and
+//  exiting the puzzle shows the gems in the wrong position. The script that
+//  determines which cel to display duplicates a chunk of code for every gem
+//  combination but the final copy is missing an entire switch block.
+//
+// We fix this by patching a branch so that one of the many copies of the
+//  missing code is executed for the buggy gem combination.
+//
+// Applies to: All versions
+// Responsible method: collar:init
+static const uint16 kq7StatueGemCelSignature[] = {
+	0x30, SIG_UINT16(0x003b),               // bnt 003b [ incomplete code ]
+	SIG_ADDTOOFFSET(+0x07),
+	0x88, SIG_UINT16(0x0148),               // lsg 0148
+	SIG_ADDTOOFFSET(+0x2e),
+	0xa3, SIG_MAGICDWORD, 0x06,             // sal 06
+	0x3a,                                   // toss
+	0x3a,                                   // toss
+	0x3a,                                   // toss
+	SIG_END
+};
+
+static const uint16 kq7StatueGemCelPatch[] = {
+	0x30, PATCH_UINT16(0x0007),             // bnt 0007 [ copy of missing code ]
+	PATCH_END
+};
+
+// KQ7 fails to reset most of its global variables when starting a new game. The
+//  script implicitly relies on initial values from the heap. Starting a new
+//  game after returning to the main menu causes the previous game's state to
+//  persist and create various glitches. A simple example is on the first screen
+//  of chapter 1: if a new game is started after playing a later chapter, the
+//  top gem in the statue will be in its solved position. nameGameRoom:init does
+//  reset some globals, but only those whose initial heap values weren't zero.
+//
+// We fix this by writing our own loop to reset all global variables correctly
+//  when starting a new game. We do this by combining the existing loops that
+//  reset flag globals to zero and inventory indexes to -1. All other game
+//  globals are now reset to zero, except for the two objects which must remain.
+//  We also restore a global which must contain the result of kMemoryInfo 0, and
+//  initialize global372 to -1 which Sierra forgot to do. After our reset loop,
+//  nameGameRoom:init proceeds with its initialization of non-zero globals.
+//
+// Applies to: All versions
+// Responsible method: nameGameRoom:init
+static const uint16 kq7InitGameGlobalsSignature[] = {
+	SIG_MAGICDWORD,
+	0x34, SIG_UINT16(0x04d2),               // ldi 04d2
+	0xa1, 0x65,                             // sag 65 [ redundant write of unused global ]
+	SIG_ADDTOOFFSET(+0x30),
+	0x35, 0xff,                             // ldi ff
+	0xa0, SIG_UINT16(0x0149),               // sag 0149 [ global329 = -1 ]
+	0x35, 0xff,                             // ldi ff
+	0xa0, SIG_UINT16(0x014a),               // sag 014a [ global330 = -1 ]
+	// loop: set all inventory indexes to -1
+	0x35, 0x00,                             // ldi 00
+	0xa5, 0x00,                             // sat 00 [ temp0 = 0 ]
+	0x8d, 0x00,                             // lst 00
+	0x35, 0x10,                             // ldi 10
+	0x22,                                   // lt?    [ temp0 < 16 ]
+	0x31, 0x12,                             // bnt 12
+	0x39, 0xff,                             // pushi ff
+	0x85, 0x00,                             // lat 00
+	0xb0, SIG_UINT16(0x0151),               // sagi 0151 [ global337[temp0] = -1 ]
+	0x39, 0xff,                             // pushi ff
+	0x85, 0x00,                             // lat 00
+	0xb0, SIG_UINT16(0x0161),               // sagi 0161 [ global353[temp0] = -1 ]
+	0xc5, 0x00,                             // +at 00 [ ++temp0 ]
+	0x33, 0xe7,                             // jmp e7 [ iterate ]
+	// loop: set all flag globals to 0
+	0x35, 0x24,                             // ldi 24
+	0xa5, 0x02,                             // sat 02 [ temp2 = 36 ]
+	0x35, 0x00,                             // ldi 00
+	0xa5, 0x00,                             // sat 00 [ temp0 = 0 ]
+	0x8d, 0x00,                             // lst 00
+	0x85, 0x02,                             // lst 02
+	0x22,                                   // lt?    [ temp0 < temp2 (36) ]
+	0x31, 0x09,                             // bnt 09
+	0x76,                                   // push0
+	0x85, 0x00,                             // lat 00
+	0xb1, 0x7f,                             // sagi 7f [ global127[temp0] = 0 ]
+	0xc5, 0x00,                             // +at 00 [ ++temp0 ]
+	0x33, 0xf0,                             // jmp f0 [ iterate ]
+	SIG_END
+};
+
+static const uint16 kq7InitGameGlobalsPatch[] = {
+	0x34, PATCH_UINT16(0x007f),             // ldi 007f
+	0x33, 0x43,                             // jmp 43 [ init loop ]
+	PATCH_ADDTOOFFSET(+0x35),
+	0xa0, PATCH_UINT16(0x014a),             // sag 014a [ global330 = -1 ]
+	0xa0, PATCH_UINT16(0x0174),             // sag 0174 [ global372 = -1 (reset chicken little) ]
+	0x34, PATCH_UINT16(0x7fe8),             // ldi 7fe8
+	0xa0, PATCH_UINT16(0x0142),             // sag 0142 [ global332 = kMemoryInfo 0 result ]
+	0x33, 0x2c,                             // jmp 2c   [ continue room init ]
+	// init loop
+	0xa5, 0x00,                             // sat 00 [ temp0 = 127 ]
+	// loop condition
+	0x38, PATCH_UINT16(0x017b),             // pushi 017b
+	0x1a,                                   // eq?    [ global == 379 ]
+	0x2f, 0xb5,                             // bt b5  [ exit loop and init specific globals ]
+	// skip kqResponseCode, it can't be reset
+	0x60,                                   // pprev
+	0x34, PATCH_UINT16(0x0136),             // ldi 0136
+	0x1a,                                   // eq?    [ global == 310 ]
+	0x2f, 0x19,                             // bt 19  [ skip reset ]
+	// skip theUseObjCursor, it can't be reset
+	0x8d, 0x00,                             // lst 00
+	0x34, PATCH_UINT16(0x014c),             // ldi 014c
+	0x1a,                                   // eq?    [ global == 332 ]
+	0x2f, 0x11,                             // bt 11  [ skip reset ]
+	// reset globals 337 through 368 to -1, all others to 0
+	0x39, 0x20,                             // pushi 20
+	0x38, PATCH_UINT16(0x0170),             // pushi 0170
+	0x85, 0x00,                             // lat 00
+	0x04,                                   // sub    [ 368 - temp0 ]
+	0x28,                                   // uge?   [ 32 u>= (368 - temp0) ]
+	0x31, 0x01,                             // bnt 01 [ skip if global not in -1 range ]
+	0x16,                                   // neg    [ acc = -1 ]
+	0x36,                                   // push   [ 0 or -1 ]
+	0x85, 0x00,                             // lat 00
+	0xb1, 0x00,                             // sagi 00 [ global[temp0] = 0 or -1 ]
+	0xc5, 0x00,                             // +at 00  [ ++temp0 ]
+	0x33, 0xd6,                             // jmp d6  [ iterate ]
+	PATCH_END
+};
+
+// KQ7 doesn't reset the chapter 6 volcano timers when exiting to the main menu
+//  without saving. The volcano can then erupt on the main menu or in a new game
+//  in the wrong chapter. The quit menu has several copies of the code that
+//  resets the game for the main menu but only one of them stops the timers.
+//
+// We fix this by patching the incomplete code to jump to the complete version.
+//
+// Applies to: PC 2.00 and 2.00b
+// Responsible method: chapInset:dispose
+static const uint16 kq7StopTimersSignature[] = {
+	0x38, SIG_SELECTOR16(eachElementDo),    // pushi eachElementDo [ start of complete reset ]
+	SIG_ADDTOOFFSET(+0xbf),
+	0x38, SIG_SELECTOR16(eachElementDo),    // pushi eachElementDo [ start of incomplete reset ]
+	SIG_ADDTOOFFSET(+0x49),
+	0x33, SIG_MAGICDWORD, 0x2f,             // jmp 2f
+	0x38, SIG_SELECTOR16(eachElementDo),    // pushi eachElementDo [ start of incomplete reset ]
+	SIG_END
+};
+
+static const uint16 kq7StopTimersPatch[] = {
+	PATCH_ADDTOOFFSET(+0xc2),
+	0x32, PATCH_UINT16(0xff3b),             // jmp ff3b [ jump to complete reset ]
+	PATCH_ADDTOOFFSET(+0x4b),
+	0x32, PATCH_UINT16(0xfeed),             // jmp feed [ jump to complete reset ]
+	PATCH_END
+};
+
 //          script, description,                                      signature                                 patch
 static const SciScriptPatcherEntry kq7Signatures[] = {
 	{  true,     0, "disable video benchmarking",                  1, kq7BenchmarkSignature,                    kq7BenchmarkPatch },
 	{  true,     0, "remove hardcoded spin loop",                  1, kq7PragmaFailSpinSignature,               kq7PragmaFailSpinPatch },
+	{  true,    20, "fix initializing game globals",               1, kq7InitGameGlobalsSignature,              kq7InitGameGlobalsPatch },
+	{  true,    25, "fix stopping timers",                         1, kq7StopTimersSignature,                   kq7StopTimersPatch },
 	{  true,    30, "fix allowing too many saves",                 1, kq7TooManySavesSignature,                 kq7TooManySavesPatch },
 	{  true,  1250, "fix opening cartoon",                         1, kq7OpeningCartoonSignature,               kq7OpeningCartoonPatch },
+	{  true,  1250, "fix statue gem cel",                          1, kq7StatueGemCelSignature,                 kq7StatueGemCelPatch },
 	{  true,  5300, "fix snake oil salesman disposal",             1, kq7SnakeOilSalesmanSignature,             kq7SnakeOilSalesmanPatch },
 	{  true,  5301, "fix chicken cartoon",                         1, kq7ChickenCartoonSignature,               kq7ChickenCartoonPatch },
 	{  true,  6100, "fix extra ambrosia",                          1, kq7ExtraAmbrosiaSignature,                kq7ExtraAmbrosiaPatch },

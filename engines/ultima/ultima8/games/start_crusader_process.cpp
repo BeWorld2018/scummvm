@@ -66,7 +66,6 @@ void StartCrusaderProcess::run() {
 
 	// Try to load the save game, if succeeded this pointer will no longer be valid
 	if (_saveSlot >= 0 && Ultima8Engine::get_instance()->loadGameState(_saveSlot).getCode() == Common::kNoError) {
-		//PaletteFaderProcess::I_fadeFromBlack(0, 0);
 		return;
 	}
 
@@ -98,6 +97,10 @@ void StartCrusaderProcess::run() {
 			0x038E, 0x0388, 0x038A, 0x038D, 0x038B, 0x0386,
 			// Ammo
 			0x033D, 0x033E, 0x033F, 0x0340, 0x0341
+			// No Regret Weapons
+			0x5F6, 0x5F5, 0x198,
+			// No Regret Ammo
+			0x615, 0x614
 		};
 		for (int i = 0; i < ARRAYSIZE(wpnshapes); i++) {
 			for (int j = 0; j < 5; j++) {
@@ -112,7 +115,13 @@ void StartCrusaderProcess::run() {
 		// teleport, so undo the flag that normally stops that.
 		avatar->setJustTeleported(false);
 
-		Process *fader = new PaletteFaderProcess(0x003F3F3F, true, 0x7FFF, 60, false);
+		if (GAME_IS_REGRET) {
+			avatar->setInCombat(0);
+			avatar->setDir(dir_south);
+			avatar->setActorFlag(Actor::ACT_WEAPONREADY);
+		}
+
+		Process *fader = new PaletteFaderProcess(0x00FFFFFF, true, 0x7FFF, 60, false);
 		Kernel::get_instance()->addProcess(fader);
 	}
 

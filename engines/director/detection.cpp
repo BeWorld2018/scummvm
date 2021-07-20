@@ -25,6 +25,7 @@
 #include "engines/advancedDetector.h"
 
 #include "common/file.h"
+#include "common/winexe.h"
 
 #include "director/detection.h"
 #include "director/director.h"
@@ -47,6 +48,7 @@ static struct CustomTarget {
 };
 
 static const DebugChannelDef debugFlagList[] = {
+	{Director::kDebug32bpp, "32bpp", "Work in 32bpp mode"},
 	{Director::kDebugCompile, "compile", "Lingo Compilation"},
 	{Director::kDebugCompileOnly, "compileonly", "Skip Lingo code execution"},
 	{Director::kDebugDesktop, "desktop", "Show the Classic Mac desktop"},
@@ -214,6 +216,9 @@ ADDetectedGame DirectorMetaEngineDetection::fallbackDetect(const FileMap &allFil
 		case MKTAG('P', 'J', '0', '0'):
 			desc->version = 700;
 			break;
+		case MKTAG('P', 'J', '0', '1'):
+			desc->version = 800;
+			break;
 		default:
 			// Prior to version 4, there was no tag here. So we'll use a bit of a
 			// heuristic to detect. The first field is the entry count, of which
@@ -252,7 +257,19 @@ ADDetectedGame DirectorMetaEngineDetection::fallbackDetect(const FileMap &allFil
 		s_fallbackFileNameBuffer[50] = '\0';
 		desc->desc.filesDescriptions[0].fileName = s_fallbackFileNameBuffer;
 
-		Common::String extra = Common::String::format("v%d.%02d", desc->version / 100, desc->version % 100);
+		Common::String extra;
+		Common::WinResources *exe = Common::WinResources::createFromEXE(&f);
+		if (exe) {
+			Common::WinResources::VersionInfo *versionInfo = exe->getVersionResource(1);
+			if (versionInfo) {
+				extra = Common::String::format("v%d.%d.%dr%d", versionInfo->fileVersion[0], versionInfo->fileVersion[1], versionInfo->fileVersion[2], versionInfo->fileVersion[3]);
+				delete versionInfo;
+			}
+			delete exe;
+		}
+		if (extra.empty()) {
+			extra = Common::String::format("v%d.%02d", desc->version / 100, desc->version % 100);
+		}
 		Common::strlcpy(s_fallbackExtraBuf, extra.c_str(), sizeof(s_fallbackExtraBuf) - 1);
 		desc->desc.extra = s_fallbackExtraBuf;
 

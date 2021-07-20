@@ -33,17 +33,9 @@
 
 namespace Saga2 {
 
-const uint16 maxActiveSpells = 8;
-
-//  Horribly kludged hard-coded sprite index numbers for bubble sprites
-const int16     baseBubbleSpriteIndex = 111,
-                bubbleSpriteCount = 8;
-uint8           bubbleColorTable[] = { 1, 0, 0, 0 };
+uint8 bubbleColorTable[] = { 1, 0, 0, 0 };
 
 DisplayNode                     *DisplayNodeList::head;
-DisplayNodeList                 mainDisplayList;
-
-SpellDisplayList                activeSpells(maxActiveSpells);
 
 bool                            centerActorIndicatorEnabled;
 
@@ -55,7 +47,6 @@ extern int16        currentMapNum;
 extern WorldMapData *mapList;
 
 extern StaticPoint16 fineScroll;
-extern gPort        backPort;
 
 extern SpriteSet    *objectSprites,        // object sprites
                     *spellSprites;        // spell effect sprites
@@ -95,26 +86,26 @@ uint8 identityColors[256] = {
 //	build the list of stuff to draw (like guns)
 
 void buildDisplayList(void) {
-	mainDisplayList.buildObjects(true);
-	activeSpells.buildList();
+	g_vm->_mainDisplayList->buildObjects(true);
+	g_vm->_activeSpells->buildList();
 }
 
 //-----------------------------------------------------------------------
 //	Update all objects which have no motion task
 
 void updateObjectAppearances(int32 deltaTime) {
-	mainDisplayList.updateOStates(deltaTime);
+	g_vm->_mainDisplayList->updateOStates(deltaTime);
 #ifdef WEWANTSPELLSTOSTOPINCOMBAT
 	if (!InCombatPauseKludge())
 #endif
-		activeSpells.updateStates(deltaTime);
+		g_vm->_activeSpells->updateStates(deltaTime);
 }
 
 //-----------------------------------------------------------------------
 //	Draw all sprites on the display list
 
 void drawDisplayList(void) {
-	mainDisplayList.draw();
+	g_vm->_mainDisplayList->draw();
 }
 
 void  DisplayNodeList::init(uint16 s) {
@@ -506,12 +497,12 @@ void DisplayNode::drawObject(void) {
 			    bubbleColorTable,
 			    ARRAYSIZE(bubbleColorTable));
 
-			if (a->kludgeCount < 0 || ++a->kludgeCount >= bubbleSpriteCount)
+			if (a->kludgeCount < 0 || ++a->kludgeCount >= kBubbleSpriteCount)
 				a->kludgeCount = 0;
 
 			sc = &scList[0];
 			sc->sp = spellSprites->sprite(
-			             baseBubbleSpriteIndex + a->kludgeCount);
+			             kBaseBubbleSpriteIndex + a->kludgeCount);
 			sc->offset.x = scList->offset.y = 0;
 			sc->colorTable = mainColors;
 			sc->flipped = false;
@@ -779,7 +770,7 @@ void DisplayNode::drawObject(void) {
 	effectFlags |= sprFXTerrainMask;
 
 	DrawCompositeMaskedSprite(
-	    backPort,
+	    g_vm->_backPort,
 	    scList,
 	    partCount,
 	    drawPos,
@@ -810,14 +801,14 @@ void DisplayNode::drawObject(void) {
 		indicatorCoords.x = hitBox.x + fineScroll.x + (hitBox.width - indicator.size.x) / 2;
 		indicatorCoords.y = hitBox.y + fineScroll.y - indicator.size.y - 2;
 
-		TBlit(backPort.map, &indicator, indicatorCoords.x, indicatorCoords.y);
+		TBlit(g_vm->_backPort.map, &indicator, indicatorCoords.x, indicatorCoords.y);
 	}
 }
 
 //-----------------------------------------------------------------------
 //	Do mouse hit-test on objects
 
-ObjectID pickObject(const Point16 &mouse, StaticTilePoint &objPos) {
+ObjectID pickObject(const StaticPoint32 &mouse, StaticTilePoint &objPos) {
 	DisplayNode     *dn;
 	ObjectID        result = Nothing;
 	int32           dist = maxint32;
@@ -831,7 +822,7 @@ ObjectID pickObject(const Point16 &mouse, StaticTilePoint &objPos) {
 		if (dn->type == nodeTypeObject) {
 			GameObject  *obj = dn->object;
 
-			if (obj->parent() == currentWorld && dn->hitBox.ptInside(mouse)) {
+			if (obj->parent() == currentWorld && dn->hitBox.ptInside(mouse.x, mouse.y)) {
 				TilePoint   loc = obj->getLocation();
 				int32       newDist = loc.u + loc.v;
 
@@ -1008,7 +999,7 @@ void Effectron::drawEffect(void) {
 	                                  0) <= 5);
 
 	DrawCompositeMaskedSprite(
-	    backPort,
+	    g_vm->_backPort,
 	    scList,
 	    1,
 	    drawPos,

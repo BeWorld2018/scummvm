@@ -120,14 +120,6 @@ static const StaticRect autoMapBotPanelRect = {
 	autoMapBTHeight
 };
 
-
-static const StaticRect *autoMapPanelRects[numAutoMapPanels] = {
-	&autoMapTopPanelRect,
-	&autoMapMidPanelRect,
-	&autoMapBotPanelRect
-};
-
-
 const int16     scrollBtnWidth  = 42;
 const int16     scrollBtnHeight = 42;
 
@@ -143,9 +135,9 @@ static const StaticRect scrollBtnRect = {
 
 
 StaticWindow autoMapDecorations[numAutoMapPanels] = {
-	{*(autoMapPanelRects[0]), NULL, autoMapTopPanelResID},
-	{*(autoMapPanelRects[1]), NULL, autoMapMidPanelResID},
-	{*(autoMapPanelRects[2]), NULL, autoMapBotPanelResID}
+	{autoMapTopPanelRect, NULL, autoMapTopPanelResID},
+	{autoMapMidPanelRect, NULL, autoMapMidPanelResID},
+	{autoMapBotPanelRect, NULL, autoMapBotPanelResID}
 };
 
 
@@ -234,7 +226,8 @@ void CAutoMap::locateRegion(void) {
 	}
 
 	free(trRes);
-	if (areaRes) auxResFile->disposeContext(areaRes);
+
+	auxResFile->disposeContext(areaRes);
 
 	baseCoords.u = centerCoords.u - summaryRadius;
 	baseCoords.v = centerCoords.v - summaryRadius;
@@ -387,7 +380,7 @@ void CAutoMap::drawClipped(
 	WindowDecoration *dec;
 	int16           i;
 
-	pointer.hide();
+	g_vm->_pointer->hide();
 
 
 	//  For each "decorative panel" within the frame of the window
@@ -417,7 +410,7 @@ void CAutoMap::drawClipped(
 	               sumMapArea.width, sumMapArea.height);
 
 	// show the cursor again
-	pointer.show();
+	g_vm->_pointer->show();
 }
 
 // ------------------------------------------------------------------------

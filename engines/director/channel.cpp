@@ -105,12 +105,14 @@ const Graphics::Surface *Channel::getMask(bool forceMatte) {
 		_sprite->_ink == kInkTypeNotGhost ||
 		_sprite->_blend > 0;
 
+	Common::Rect bbox(getBbox());
+
 	if (needsMatte || forceMatte) {
 		// Mattes are only supported in bitmaps for now. Shapes don't need mattes,
 		// as they already have all non-enclosed white pixels transparent.
 		// Matte on text has a trivial enough effect to not worry about implementing.
 		if (_sprite->_cast->_type == kCastBitmap) {
-			return ((BitmapCastMember *)_sprite->_cast)->getMatte();
+			return ((BitmapCastMember *)_sprite->_cast)->getMatte(bbox);
 		} else {
 			return nullptr;
 		}
@@ -119,8 +121,7 @@ const Graphics::Surface *Channel::getMask(bool forceMatte) {
 		CastMember *member = g_director->getCurrentMovie()->getCastMember(maskID);
 
 		if (member && member->_initialRect == _sprite->_cast->_initialRect) {
-			Common::Rect bbox(getBbox());
-			Graphics::MacWidget *widget = member->createWidget(bbox, this);
+			Graphics::MacWidget *widget = member->createWidget(bbox, this, _sprite->_spriteType);
 			if (_mask)
 				delete _mask;
 			_mask = new Graphics::ManagedSurface();
@@ -197,7 +198,7 @@ bool Channel::isMouseIn(const Common::Point &pos) {
 
 	if (_sprite->_ink == kInkTypeMatte) {
 		if (_sprite->_cast && _sprite->_cast->_type == kCastBitmap) {
-			Graphics::Surface *matte = ((BitmapCastMember *)_sprite->_cast)->getMatte();
+			Graphics::Surface *matte = ((BitmapCastMember *)_sprite->_cast)->getMatte(bbox);
 			return matte ? !(*(byte *)(matte->getBasePtr(pos.x - bbox.left, pos.y - bbox.top))) : true;
 		}
 	}
@@ -216,9 +217,9 @@ bool Channel::isMatteIntersect(Channel *channel) {
 	Graphics::Surface *yourMatte = nullptr;
 
 	if (_sprite->_cast && _sprite->_cast->_type == kCastBitmap)
-		myMatte = ((BitmapCastMember *)_sprite->_cast)->getMatte();
+		myMatte = ((BitmapCastMember *)_sprite->_cast)->getMatte(myBbox);
 	if (channel->_sprite->_cast && channel->_sprite->_cast->_type == kCastBitmap)
-		yourMatte = ((BitmapCastMember *)channel->_sprite->_cast)->getMatte();
+		yourMatte = ((BitmapCastMember *)channel->_sprite->_cast)->getMatte(yourBbox);
 
 	if (myMatte && yourMatte) {
 		for (int i = intersectRect.top; i < intersectRect.bottom; i++) {
@@ -246,9 +247,9 @@ bool Channel::isMatteWithin(Channel *channel) {
 	Graphics::Surface *yourMatte = nullptr;
 
 	if (_sprite->_cast && _sprite->_cast->_type == kCastBitmap)
-		myMatte = ((BitmapCastMember *)_sprite->_cast)->getMatte();
+		myMatte = ((BitmapCastMember *)_sprite->_cast)->getMatte(myBbox);
 	if (channel->_sprite->_cast && channel->_sprite->_cast->_type == kCastBitmap)
-		yourMatte = ((BitmapCastMember *)channel->_sprite->_cast)->getMatte();
+		yourMatte = ((BitmapCastMember *)channel->_sprite->_cast)->getMatte(yourBbox);
 
 	if (myMatte && yourMatte) {
 		for (int i = intersectRect.top; i < intersectRect.bottom; i++) {
@@ -308,6 +309,9 @@ void Channel::setClean(Sprite *nextSprite, int spriteId, bool partial) {
 	// other situation, e.g. position changing, we will let channel to handle it. So we don't have to replace widget
 	bool dimsChanged = !_sprite->_stretch && !hasTextCastMember(_sprite) && (_sprite->_width != nextSprite->_width || _sprite->_height != nextSprite->_height);
 
+	// if spriteType is changing, then we may need to re-create the widget since spriteType will guide when we creating widget
+	bool spriteTypeChanged = _sprite->_spriteType != nextSprite->_spriteType;
+
 	if (nextSprite) {
 		if (nextSprite->_cast && (_dirty || _sprite->_castId != nextSprite->_castId)) {
 			if (nextSprite->_cast->_type == kCastDigitalVideo) {
@@ -332,9 +336,12 @@ void Channel::setClean(Sprite *nextSprite, int spriteId, bool partial) {
 		_delta = Common::Point(0, 0);
 	}
 
+	// FIXME: organize the logic here.
+	// for the dirty puppet sprites, we will always replaceWidget since previousCastId is 0, but we shouldn't replace the widget of there are only position changing
+	// e.g. we won't want a puppet editable text sprite changing because that will cause the loss of text.
 	if (replace) {
 		_sprite->updateCast();
-		replaceWidget(previousCastId, dimsChanged);
+		replaceWidget(previousCastId, dimsChanged || spriteTypeChanged);
 	}
 
 	updateTextCast();
@@ -386,11 +393,13 @@ void Channel::setEditable(bool editable) {
 void Channel::updateGlobalAttr() {
 	if (!_sprite->_cast)
 		return;
+
 	// update text info, including selEnd and selStart
 	if (_sprite->_cast->_type == kCastText && _sprite->_editable && _widget)
 		((Graphics::MacText *)_widget)->setSelRange(g_director->getCurrentMovie()->_selStart, g_director->getCurrentMovie()->_selEnd);
+
 	// update button info, including checkBoxType
-	if (_sprite->_cast->_type == kCastButton && _widget)
+	if ((_sprite->_cast->_type == kCastButton || isButtonSprite(_sprite->_spriteType)) && _widget)
 		((Graphics::MacButton *)_widget)->setCheckBoxType(g_director->getCurrentMovie()->_checkBoxType);
 }
 
@@ -489,17 +498,20 @@ void Channel::replaceWidget(CastMemberID previousCastId, bool force) {
 	}
 
 	if (_sprite && _sprite->_cast) {
+		// use sprite type to guide us how to draw the cast
+		// if the type don't match, then we will set it as transparent. i.e. don't create widget
+		if (!_sprite->checkSpriteType())
+			return;
 		Common::Rect bbox(getBbox());
 		_sprite->_cast->setModified(false);
 
-//		if (_sprite->_cast->_type == kCastText)
-//			debug("%s %d\n", ((TextCastMember *)_sprite->_cast)->_ftext.c_str(), ((TextCastMember *)_sprite->_cast)->_editable);
-		_widget = _sprite->_cast->createWidget(bbox, this);
+		_widget = _sprite->_cast->createWidget(bbox, this, _sprite->_spriteType);
 		if (_widget) {
 			_widget->_priority = _priority;
 			_widget->draw();
 
 			if (_sprite->_cast->_type == kCastText || _sprite->_cast->_type == kCastButton) {
+
 				_sprite->_width = _widget->_dims.width();
 				_sprite->_height = _widget->_dims.height();
 				_width = _sprite->_width;

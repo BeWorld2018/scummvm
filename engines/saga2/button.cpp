@@ -208,11 +208,11 @@ void gCompImage::draw(void) {
 	Rect16  rect = window.getExtent();
 
 	SAVE_GPORT_STATE(port);                  // save pen color, etc.
-	pointer.hide(port, extent);              // hide mouse pointer
+	g_vm->_pointer->hide(port, extent);              // hide mouse pointer
 	drawClipped(port,
 	            Point16(0, 0),
 	            Rect16(0, 0, rect.width, rect.height));
-	pointer.show(port, extent);              // show mouse pointer
+	g_vm->_pointer->show(port, extent);              // show mouse pointer
 }
 
 void *gCompImage::getCurrentCompImage(void) {
@@ -502,8 +502,8 @@ gCompButton::~gCompButton(void) {
 	}
 }
 
-void gCompButton::dim(bool enable) {
-	if (enable) {
+void gCompButton::dim(bool enableFlag) {
+	if (enableFlag) {
 		if (!dimmed) dimmed = true;
 	} else {
 		if (dimmed) dimmed = false;
@@ -575,9 +575,9 @@ void gCompButton::draw(void) {
 	Rect16  rect = window.getExtent();
 
 	SAVE_GPORT_STATE(port);                  // save pen color, etc.
-	pointer.hide(port, extent);              // hide mouse pointer
+	g_vm->_pointer->hide(port, extent);              // hide mouse pointer
 	drawClipped(port, Point16(0, 0), Rect16(0, 0, rect.width, rect.height));
-	pointer.show(port, extent);              // show mouse pointer
+	g_vm->_pointer->show(port, extent);              // show mouse pointer
 }
 
 void *gCompButton::getCurrentCompImage(void) {
@@ -709,6 +709,7 @@ gMultCompButton::gMultCompButton(gPanelList &list, const Rect16 &box, void **new
 		max     = 0;
 		min     = 0;
 		current = 0;
+		response = false;
 		return;
 	}
 
@@ -848,9 +849,9 @@ void gSlider::draw(void) {
 	Point16 offset  = Point16(0, 0);
 
 	SAVE_GPORT_STATE(port);                  // save pen color, etc.
-	pointer.hide(port, extent);              // hide mouse pointer
+	g_vm->_pointer->hide(port, extent);              // hide mouse pointer
 	drawClipped(port, offset, Rect16(0, 0, imageRect.width, imageRect.height));
-	pointer.show(port, extent);              // show mouse pointer
+	g_vm->_pointer->show(port, extent);              // show mouse pointer
 }
 
 

@@ -111,10 +111,6 @@ typedef void SpellInitFunction(Effectron *);
 //
 
 class EffectDisplayPrototype {
-
-#ifdef __WATCOMC__
-#pragma off (unreferenced) ;
-#endif
 	static SPELLLOCATIONFUNCTION(nullLocation) {
 		return TilePoint(0, 0, 0);
 	}
@@ -132,9 +128,6 @@ class EffectDisplayPrototype {
 	}
 	static SPELLINITFUNCTION(nullInit) {
 	}
-#ifdef __WATCOMC__
-#pragma on (unreferenced) ;
-#endif
 
 	EffectID                ID;
 public:
@@ -322,8 +315,8 @@ public:
 
 	void init(void);
 	void initEffect(TilePoint);
-	void loadEffect(SaveFileReader &saveGame, uint16 eListSize);
-	void saveEffect(SaveFileConstructor &saveGame);
+	void readEffect(Common::InSaveFile *in, uint16 eListSize);
+	void writeEffect(Common::MemoryWriteStreamDynamic *out);
 	void termEffect(void);
 	size_t saveSize(void);
 
@@ -356,8 +349,8 @@ public :
 	void buildList(void);
 	void updateStates(int32 deltaTime);
 
-	void save(SaveFileConstructor &saveGame);
-	void load(SaveFileReader &saveGame);
+	void write(Common::OutSaveFile *outD);
+	void read(Common::InSaveFile *in);
 	void wipe(void);
 	size_t saveSize(void);
 };

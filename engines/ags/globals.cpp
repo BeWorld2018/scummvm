@@ -93,7 +93,9 @@
 #include "ags/engine/script/script.h"
 #include "ags/engine/script/system_imports.h"
 #include "ags/lib/std/limits.h"
+#include "ags/plugins/ags_plugin.h"
 #include "ags/plugins/plugin_object_reader.h"
+#include "ags/plugins/core/core.h"
 #include "common/file.h"
 
 namespace AGS3 {
@@ -176,6 +178,7 @@ Globals::Globals() {
 
 	// draw_software.cpp globals
 	_BlackRects = new DirtyRects();
+	_GlobalOffs = new Point();
 	_RoomCamRects = new std::vector<DirtyRects>();
 	_RoomCamPositions = new std::vector<std::pair<int, int> >();
 
@@ -189,7 +192,7 @@ Globals::Globals() {
 	_fonts = new std::vector<AGS::Shared::Font>();
 	_ttfRenderer = new TTFFontRenderer();
 	_wfnRenderer = new WFNFontRenderer();
-	_fontLines = new SplitLines();
+	_Lines = new SplitLines();
 
 	// game.cpp globals
 	_ccDynamicGUIObject = new CCGUIObject();
@@ -290,6 +293,11 @@ Globals::Globals() {
 
 	// overlay.cpp globals
 	_screenover = new ScreenOverlay[MAX_SCREEN_OVERLAYS];
+
+	// plugins globals
+	_engineExports = new Plugins::Core::EngineExports();
+	_plugins = new Common::Array<EnginePlugin>();
+	_plugins->reserve(MAXPLUGINS);
 
 	// plugin_object_reader.cpp globals
 	_pluginReaders = new PluginObjectReader[MAX_PLUGIN_OBJECT_READERS];
@@ -406,6 +414,7 @@ Globals::~Globals() {
 
 	// draw_software.cpp globals
 	delete _BlackRects;
+	delete _GlobalOffs;
 	delete _RoomCamRects;
 	delete _RoomCamPositions;
 
@@ -419,6 +428,7 @@ Globals::~Globals() {
 	delete _fonts;
 	delete _ttfRenderer;
 	delete _wfnRenderer;
+	delete _Lines;
 
 	// game.cpp globals
 	delete _ccDynamicGUIObject;
@@ -510,6 +520,10 @@ Globals::~Globals() {
 
 	// overlay.cpp globals
 	delete[] _screenover;
+
+	// plugins globals
+	delete _engineExports;
+	delete _plugins;
 
 	// plugin_object_reader.cpp globals
 	delete[] _pluginReaders;

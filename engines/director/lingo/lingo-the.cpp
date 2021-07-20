@@ -482,8 +482,11 @@ Datum Lingo::getTheEntity(int entity, Datum &id, int field) {
 		d.u.i = 1;					// We always allow it in ScummVM
 		break;
 	case kTheItemDelimiter:
-		d.type = STRING;
-		d.u.s = new Common::String(g_lingo->_itemDelimiter);
+		{
+			Common::U32String ch(g_lingo->_itemDelimiter);
+			d.type = STRING;
+			d.u.s = new Common::String(ch, Common::kUtf8);
+		}
 		break;
 	case kTheKey:
 		d.type = STRING;
@@ -744,7 +747,8 @@ Datum Lingo::getTheEntity(int entity, Datum &id, int field) {
 		d.u.i = (movie->_keyFlags & Common::KBD_SHIFT) ? 1 : 0;
 		break;
 	case kTheSoundEnabled:
-		getTheEntitySTUB(kTheSoundEnabled);
+		d.type = INT;
+		d.u.i = _vm->getSoundManager()->getSoundEnabled();
 		break;
 	case kTheSoundEntity:
 		{
@@ -765,7 +769,9 @@ Datum Lingo::getTheEntity(int entity, Datum &id, int field) {
 		}
 		break;
 	case kTheSoundLevel:
-		getTheEntitySTUB(kTheSoundLevel);
+		// getting sound level of channel 1, maybe need to be amended in higher version
+		d.type = INT;
+		d.u.i = _vm->getSoundManager()->getSoundLevel(1);
 		break;
 	case kTheSprite:
 		d = getTheSprite(id, field);
@@ -942,9 +948,9 @@ void Lingo::setTheEntity(int entity, Datum &id, int field, Datum &d) {
 		break;
 	case kTheItemDelimiter:
 		if (d.asString().size() == 0)
-			g_lingo->_itemDelimiter = *"";
+			g_lingo->_itemDelimiter = 0;
 		else
-			g_lingo->_itemDelimiter = d.asString()[0];
+			g_lingo->_itemDelimiter = d.asString().decode(Common::kUtf8)[0];
 		break;
 	case kTheKeyDownScript:
 		movie->setPrimaryEventHandler(kEventKeyDown, d.asString());
@@ -1002,7 +1008,7 @@ void Lingo::setTheEntity(int entity, Datum &id, int field, Datum &d) {
 		}
 		break;
 	case kTheSoundEnabled:
-		setTheEntitySTUB(kTheSoundEnabled);
+		_vm->getSoundManager()->setSoundEnabled((bool)d.asInt());
 		break;
 	case kTheSoundEntity:
 		{
@@ -1022,7 +1028,8 @@ void Lingo::setTheEntity(int entity, Datum &id, int field, Datum &d) {
 		}
 		break;
 	case kTheSoundLevel:
-		setTheEntitySTUB(kTheSoundLevel);
+		// setting all of the channel for now
+		_vm->getSoundManager()->setSouldLevel(-1, d.asInt());
 		break;
 	case kTheSprite:
 		setTheSprite(id, field, d);

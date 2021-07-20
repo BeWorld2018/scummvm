@@ -55,9 +55,9 @@ void Cast::loadFontMap(Common::SeekableReadStreamEndian &stream) {
 		}
 
 		// Map cast font ID to window manager font ID
-		FontInfo *info = new FontInfo;
-		info->toFont = _vm->_wm->_fontMan->registerFontName(font);
-		_fontMap[id] = info;
+		FontMapEntry *entry = new FontMapEntry;
+		entry->toFont = _vm->_wm->_fontMan->registerFontName(font, id);
+		_fontMap[id] = entry;
 
 		debugC(3, kDebugLoading, "Cast::loadFontMap: Mapping font %d (%s) to %d", id, font.c_str(), _fontMap[id]->toFont);
 		currentRawPosition = stream.pos();
@@ -94,16 +94,16 @@ void Cast::loadFontMapV4(Common::SeekableReadStreamEndian &stream) {
 		uint16 id = stream.readUint16();
 
 		// Map cast font ID to window manager font ID
-		FontInfo *info = new FontInfo;
+		FontMapEntry *entry = new FontMapEntry;
 		if (platform == Common::kPlatformWindows && _fontXPlatformMap.contains(name)) {
 			FontXPlatformInfo *xinfo = _fontXPlatformMap[name];
-			info->toFont = _vm->_wm->_fontMan->registerFontName(xinfo->toFont);
-			info->remapChars = xinfo->remapChars;
-			info->sizeMap = xinfo->sizeMap;
+			entry->toFont = _vm->_wm->_fontMan->registerFontName(xinfo->toFont, id);
+			entry->remapChars = xinfo->remapChars;
+			entry->sizeMap = xinfo->sizeMap;
 		} else {
-			info->toFont = _vm->_wm->_fontMan->registerFontName(name);
+			entry->toFont = _vm->_wm->_fontMan->registerFontName(name, id);
 		}
-		_fontMap[id] = info;
+		_fontMap[id] = entry;
 
 		debugC(3, kDebugLoading, "Cast::loadFontMapV4: Mapping %s font %d (%s) to %d", getPlatformAbbrev(platform), id, name.c_str(), _fontMap[id]->toFont);
 	}
@@ -340,10 +340,11 @@ bool Cast::readFXmpLine(Common::SeekableReadStreamEndian &stream) {
 			}
 			byte toChar = atoi(tok.str.c_str());
 
-			// TODO: We should fill _charMap with mappings matching the current platform.
-			// We only have Mac fonts right now, though, so we'll always use the Win => Mac mappings.
-			if (fromPlatform == Common::kPlatformWindows) {
-				_charMap[fromChar] = toChar;
+			if (fromPlatform == Common::kPlatformMacintosh) {
+				_macCharsToWin[fromChar] = toChar;
+				debugC(3, kDebugLoading, "Cast::readFXmpLine: Mapping Mac char %d to Win char %d", fromChar, toChar);
+			} else {
+				_winCharsToMac[fromChar] = toChar;
 				debugC(3, kDebugLoading, "Cast::readFXmpLine: Mapping Win char %d to Mac char %d", fromChar, toChar);
 			}
 

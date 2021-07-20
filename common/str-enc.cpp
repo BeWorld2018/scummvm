@@ -715,6 +715,8 @@ getConversionTable(CodePage page) {
 		return kWindows1257ConversionTable;
 	case kMacCentralEurope:
 		return kMacCentralEuropeConversionTable;
+	case kMacRoman:
+		return kMacRomanConversionTable;
 	case kISO8859_1:
 		return kLatin1ConversionTable;
 	case kISO8859_2:
@@ -777,7 +779,7 @@ getReverseConversionTable(CodePage page) {
 }
 
 void U32String::decodeOneByte(const char *src, uint32 len, CodePage page) {
-		const uint16 *conversionTable = getConversionTable(page);
+	const uint16 *conversionTable = getConversionTable(page);
 
 	if (conversionTable == nullptr) {
 		conversionTable = kASCIIConversionTable;

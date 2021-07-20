@@ -30,12 +30,17 @@
 
 #include "engines/engine.h"
 
+#include "saga2/console.h"
 #include "saga2/idtypes.h"
 #include "saga2/weapons.h"
 #include "saga2/vdraw.h"
 
 namespace Video {
 class SmackerDecoder;
+}
+
+namespace Common {
+class MemoryWriteStreamDynamic;
 }
 
 namespace Saga2 {
@@ -47,12 +52,30 @@ class BandList;
 class ActorAppearance;
 class PathRequest;
 class MotionTask;
+class MotionTaskList;
+class CMassWeightIndicator;
 class GrabInfo;
 class CImageCache;
 class SensorList;
 class Sensor;
 class EffectDisplayPrototypeList;
 class SpellDisplayPrototypeList;
+class DisplayNodeList;
+class SpellDisplayList;
+class gMousePointer;
+class ActiveRegion;
+class gToolBase;
+class Properties;
+class PlayerActor;
+class ProtoObj;
+class ActorProto;
+class HandleArray;
+class TileActivityTaskList;
+class TaskStackList;
+class TaskList;
+class Deejay;
+class frameSmoother;
+class frameCounter;
 
 enum {
 	kDebugResources = 1 << 0,
@@ -67,7 +90,8 @@ enum {
 	kDebugPath      = 1 << 9,
 	kDebugTasks     = 1 << 10,
 	kDebugSound     = 1 << 11,
-	kDebugSaveload  = 1 << 12
+	kDebugSaveload  = 1 << 12,
+	kDebugSensors   = 1 << 13
 };
 
 #define TICKSPERSECOND (728L/10L)
@@ -83,6 +107,11 @@ public:
 	bool canSaveGameStateCurrently() override { return true; }
 	Common::Error loadGameStream(Common::SeekableReadStream *stream) override;
 	Common::Error saveGameStream(Common::WriteStream *stream, bool isAutosave = false) override;
+	Common::Error saveGameState(int slot, const Common::String &desc, bool isAutosave) override;
+	Common::Error loadGameState(int slot) override;
+
+	Common::String getSavegameFile(int num);
+
 	void syncGameStream(Common::Serializer &s);
 
 	void loadExeResources();
@@ -100,10 +129,14 @@ public:
 public:
 	// We need random numbers
 	Common::RandomSource *_rnd;
+	Console *_console;
 
 	WeaponStuff _weaponRack[kMaxWeapons];
 	weaponID _loadedWeapons;
 	Common::Array<char *> _nameList;
+	Common::Array<PlayerActor *> _playerList;
+	Common::Array<ProtoObj *> _objectProtos;
+	Common::Array<ActorProto *> _actorProtos;
 	Common::List<TimerList *> _timerLists;
 	Common::List<Timer *> _timers;
 	Common::List<ActorAppearance *> _appearanceLRU;
@@ -111,20 +144,39 @@ public:
 	Common::List<SensorList *> _sensorListList;
 	Common::List<Sensor *> _sensorList;
 	Common::List<MotionTask *>::iterator _nextMT;
+	Common::List<CMassWeightIndicator *> _indList;
 	Common::List<int> _platformLRU;
 	BandList *_bandList;
+	MotionTaskList *_mTaskList;
 	CImageCache *_imageCache;
 	GrabInfo *_mouseInfo;
 	EffectDisplayPrototypeList *_edpList;
 	SpellDisplayPrototypeList *_sdpList;
 	ContainerList *_containerList;
+	DisplayNodeList *_mainDisplayList;
+	SpellDisplayList *_activeSpells;
+	gMousePointer *_pointer;
+	ActiveRegion *_activeRegionList;
+	gToolBase *_toolBase;
+	Properties *_properties;
+	HandleArray *_tileImageBanks;
+	TileActivityTaskList *_aTaskList;
+	TaskStackList *_stackList;
+	TaskList *_taskList;
+	Deejay *_grandMasterFTA;
+	frameSmoother *_frate;
+	frameCounter *_lrate;
 
 	gDisplayPort _mainPort;
+	gPort _backPort;
+	gPixelMap _tileDrawMap;
 
 	bool _autoAggression;
 	bool _autoWeapon;
 	bool _showNight;
 	bool _speechText;
+
+	bool _showPosition;
 
 private:
 	Video::SmackerDecoder *_smkDecoder;

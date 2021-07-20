@@ -23,6 +23,7 @@ For a more comprehensive changelog of the latest experimental code, see:
    - Added support for AGS Games versions 2.5+.
    - Added support for Nightlong: Union City Conspiracy.
    - Added support for The Journeyman Project 2: Buried in Time.
+   - Added support for Crusader: No Remorse.
 
  New ports:
    - The Nintendo DS port got a major rewrite.
@@ -68,6 +69,7 @@ For a more comprehensive changelog of the latest experimental code, see:
 
  Lure:
    - Fixed fire animation in first room when loading saves.
+   - Fixed AdLib support.
    - Fixed MT-32 support.
 
  Pegasus:
@@ -108,6 +110,15 @@ For a more comprehensive changelog of the latest experimental code, see:
      16-color Macintosh version of Indiana Jones and the Last Crusade.
    - Fixed missing instruments in the m68k Mac versions of Monkey Island 2
      and Indiana Jones and the Fate of Atlantis.
+   - Added "Macintosh b/w" render mode for the 16-color Macintosh versions of
+     Loom and Indiana Jones and the Last Crusade.
+   - Enabled difficulty selection in the version of Monkey Island 2 that was
+     included on the LucasArts Mac CD Game Pack II compilation. (It had been
+     disabled along with the copy protection.)
+   - Repair clumsy crack in Maniac Mansion (enhanced)'s keypad script.
+     This means that the GOG (and Steam?) versions will no longer accept
+     incorrect numbers, e.g. for Edna's phone number. (Why are they selling
+     a cracked version anyway?!)
 
  Tinsel:
    - Enabled the Return to Launcher feature.
@@ -128,6 +139,8 @@ For a more comprehensive changelog of the latest experimental code, see:
  Ultima:
    - Ultima 4: Added several debugger commands.
    - Ultima 4: Allow Enter key to exit ZStats display.
+   - Ultima 8: Fixed several animation bugs for events and objects.
+   - Ultima 8: Restored original text for the Spell of Resurrection book.
 
  Xeen:
    - Fixed occasional border corruption during fights.

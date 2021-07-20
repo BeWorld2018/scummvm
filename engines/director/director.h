@@ -226,6 +226,7 @@ public:
 	Graphics::MacDrawPixPtr getInkDrawPixel();
 
 	void loadKeyCodes();
+	Common::CodePage getPlatformEncoding();
 
 	Archive *createArchive();
 
@@ -247,7 +248,6 @@ public:
 	bool _centerStage;
 
 	Common::HashMap<Common::String, Archive *, Common::IgnoreCase_Hash, Common::IgnoreCase_EqualTo> _openResFiles;
-	Common::String _sharedCastFile;
 
 protected:
 	Common::Error run() override;

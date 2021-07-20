@@ -284,8 +284,14 @@ protected:
 	void printCharInternal(int chr, int color, bool shadow, int x, int y);
 	void printCharToTextBox(int chr, int color, int x, int y);
 
+	byte getTextColor();
+	byte getTextShadowColor();
+
+	Graphics::Surface *_glyphSurface;
+
 public:
 	CharsetRendererMac(ScummEngine *vm, const Common::String &fontFile);
+	~CharsetRendererMac() override;
 
 	void setCurID(int32 id) override;
 	int getFontHeight() override;

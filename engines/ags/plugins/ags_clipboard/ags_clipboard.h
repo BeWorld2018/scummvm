@@ -23,25 +23,26 @@
 #ifndef AGS_PLUGINS_AGS_CLIPBOARD_H
 #define AGS_PLUGINS_AGS_CLIPBOARD_H
 
-#include "ags/plugins/plugin_base.h"
+#include "ags/plugins/ags_plugin.h"
 
 namespace AGS3 {
 namespace Plugins {
 namespace AGSClipboard {
 
 class AGSClipboard : public PluginBase {
+	SCRIPT_HASH(AGSClipboard)
 private:
-	static IAGSEngine *_engine;
-	static Common::String *_text;
+	Common::String _text;
 private:
-	static const char *AGS_GetPluginName();
-	static void AGS_EngineStartup(IAGSEngine *engine);
-	static void AGS_EngineShutdown();
-	static void Clipboard_PasteText(ScriptMethodParams &params);
-	static void Clipboard_CopyText(ScriptMethodParams &params);
+	void Clipboard_PasteText(ScriptMethodParams &params);
+	void Clipboard_CopyText(ScriptMethodParams &params);
 
 public:
-	AGSClipboard();
+	AGSClipboard() : PluginBase() {}
+	virtual ~AGSClipboard() {}
+
+	const char *AGS_GetPluginName() override;
+	void AGS_EngineStartup(IAGSEngine *engine) override;
 };
 
 } // namespace AGSClipboard

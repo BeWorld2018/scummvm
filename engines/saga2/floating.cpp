@@ -52,12 +52,9 @@ void updateWindowSection(const Rect16 &r);
    Imports
  * ===================================================================== */
 
-extern gToolBase    G_BASE;
-
 //  These externs are imported because the window update routines
 //  need to know about the scrolling tile area.
 
-extern gPixelMap    tileDrawMap;
 extern StaticPoint16 fineScroll;
 extern gFont        *mainFont;
 extern bool         allPlayerActorsDead;
@@ -249,10 +246,10 @@ void DecoratedWindow::removeDecorations(void) {
 //  Redraw all of the decorations, on the main port only...
 
 void DecoratedWindow::draw(void) {               // redraw the window
-	pointer.hide();
+	g_vm->_pointer->hide();
 	if (displayEnabled())
 		drawClipped(g_vm->_mainPort, Point16(0, 0), extent);
-	pointer.show();
+	g_vm->_pointer->show();
 }
 
 //  Return true if window floats above animated are
@@ -416,10 +413,10 @@ void gButton::draw(void) {
 	gPort           &port = window.windowPort;
 	Rect16          rect = window.getExtent();
 
-	pointer.hide(port, extent);              // hide mouse pointer
+	g_vm->_pointer->hide(port, extent);              // hide mouse pointer
 	if (displayEnabled())
 		drawClipped(port, Point16(0, 0), Rect16(0, 0, rect.width, rect.height));
-	pointer.show(port, extent);              // show mouse pointer
+	g_vm->_pointer->show(port, extent);              // show mouse pointer
 }
 
 
@@ -620,7 +617,7 @@ void updateWindowSection(const Rect16 &r) {
 	Point16         animOffset(kTileRectX - fineScroll.x, kTileRectY);
 
 	//  Detects that program is shutting down and aborts the blit
-	if (tileDrawMap.data == nullptr)
+	if (g_vm->_tileDrawMap.data == nullptr)
 		return;
 
 	if (!checkTileAreaPort()) return;
@@ -666,7 +663,7 @@ void updateWindowSection(const Rect16 &r) {
 
 		//  Blit the animated pixels into the temp map.
 
-		tempPort.bltPixels(tileDrawMap,
+		tempPort.bltPixels(g_vm->_tileDrawMap,
 		                   localOrg.x,
 		                   localOrg.y,
 		                   animClip.x, animClip.y,
@@ -680,17 +677,17 @@ void updateWindowSection(const Rect16 &r) {
 	//  For each window, both background and float, that overlaps
 	//  the clip, draw the window's imagery
 	if (userControlsSetup) {
-		for (Common::List<gWindow *>::iterator it = G_BASE.bottomWindowIterator(); it != G_BASE.topWindowIterator(); --it)
+		for (Common::List<gWindow *>::iterator it = g_vm->_toolBase->bottomWindowIterator(); it != g_vm->_toolBase->topWindowIterator(); --it)
 			(*it)->drawClipped(tempPort, offset, clip);
 	}
 	//  Now, blit the temporary bitmap to the main screen.
 
 	g_vm->_mainPort.setMode(drawModeReplace);
-	pointer.hide(g_vm->_mainPort, clip);
+	g_vm->_pointer->hide(g_vm->_mainPort, clip);
 	g_vm->_mainPort.bltPixels(tempMap,
 	                   0, 0,
 	                   clip.x, clip.y, clip.width, clip.height);
-	pointer.show(g_vm->_mainPort, clip);
+	g_vm->_pointer->show(g_vm->_mainPort, clip);
 	g_vm->_mainPort.setMode(drawModeMatte);
 	delete[] tempMap.data;
 }
@@ -731,7 +728,7 @@ void drawFloatingWindows(gPort &port, const Point16 &offset, const Rect16 &clip)
 		}
 	}
 
-	for (Common::List<gWindow *>::iterator it = G_BASE.bottomWindowIterator(); it != G_BASE.topWindowIterator(); --it) {
+	for (Common::List<gWindow *>::iterator it = g_vm->_toolBase->bottomWindowIterator(); it != g_vm->_toolBase->topWindowIterator(); --it) {
 		dw = (DecoratedWindow *)(*it);
 		if (!dw->isBackdrop())
 			dw->drawClipped(port, offset, clip);

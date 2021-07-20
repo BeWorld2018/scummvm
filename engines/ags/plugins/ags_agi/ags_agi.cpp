@@ -26,33 +26,16 @@ namespace AGS3 {
 namespace Plugins {
 namespace AGSAgi {
 
-int screen_mode = 0;
-
-IAGSEngine *AGSAgi::_engine;
-int AGSAgi::_enabled;
-int AGSAgi::_scaling_mode;
-
-AGSAgi::AGSAgi() : PluginBase() {
-	_engine = nullptr;
-	_enabled = 0;
-	_scaling_mode = 0;
-
-	DLL_METHOD(AGS_GetPluginName);
-	DLL_METHOD(AGS_EngineStartup);
-}
-
 const char *AGSAgi::AGS_GetPluginName() {
 	return "AGS AGI Plugin stub (ags_agi.dll)";
 }
 
 void AGSAgi::AGS_EngineStartup(IAGSEngine *engine) {
-	_engine = engine;
-	_enabled = 0;
-	_scaling_mode = 0;
+	PluginBase::AGS_EngineStartup(engine);
 
-	SCRIPT_METHOD(SetAGIScalingMode);
-	SCRIPT_METHOD(GetAGIScalingMode);
-	SCRIPT_METHOD(UseAGIScaling);
+	SCRIPT_METHOD(SetAGIScalingMode, AGSAgi::SetAGIScalingMode);
+	SCRIPT_METHOD(GetAGIScalingMode, AGSAgi::GetAGIScalingMode);
+	SCRIPT_METHOD(UseAGIScaling, AGSAgi::UseAGIScaling);
 }
 
 void AGSAgi::SetAGIScalingMode(ScriptMethodParams &params) {

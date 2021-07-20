@@ -78,10 +78,7 @@
 #include "ags/engine/platform/base/ags_platform_driver.h"
 #include "ags/shared/util/directory.h"
 #include "ags/shared/util/error.h"
-#include "ags/shared/util/misc.h"
 #include "ags/shared/util/path.h"
-//#include "ags/engine/media/audio/audio_core.h"
-//#include "ags/engine/platform/util/pe.h"
 #include "ags/ags.h"
 #include "ags/globals.h"
 
@@ -540,7 +537,7 @@ int engine_check_disk_space() {
 
 int engine_check_font_was_loaded() {
 	if (!font_first_renderer_loaded()) {
-		_G(platform)->DisplayAlert("No game fonts found. At least one font is required to run the _GP(game).");
+		_G(platform)->DisplayAlert("No game fonts found. At least one font is required to run the game.");
 		_G(proper_exit) = 1;
 		return EXIT_ERROR;
 	}
@@ -1107,6 +1104,8 @@ static void engine_print_info(const std::set<String> &keys, ConfigTree *user_cfg
 // is mixed with game-related data adjustments. Divide it in parts, move game
 // data init into either InitGameState() or other game method as appropriate.
 int initialize_engine(const ConfigTree &startup_opts) {
+	_G(proper_exit) = false;
+
 	if (_G(engine_pre_init_callback)) {
 		_G(engine_pre_init_callback)();
 	}

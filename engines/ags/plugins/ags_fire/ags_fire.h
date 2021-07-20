@@ -23,30 +23,30 @@
 #ifndef AGS_PLUGINS_AGS_FIRE_AGS_FIRE_H
 #define AGS_PLUGINS_AGS_FIRE_AGS_FIRE_H
 
-#include "ags/plugins/plugin_base.h"
+#include "ags/plugins/ags_plugin.h"
 
 namespace AGS3 {
 namespace Plugins {
 namespace AGSFire {
 
 class AGSFire : public PluginBase {
+	SCRIPT_HASH(AGSFire)
 private:
-	static IAGSEngine *_engine;
-	static const char *AGS_GetPluginName();
-	static void AGS_EngineStartup(IAGSEngine *engine);
-
-private:
-	static void FireAddObject(ScriptMethodParams &params);
-	static void FirePreHeat(ScriptMethodParams &params);
-	static void FireDisableSeeding(ScriptMethodParams &params);
-	static void FireEnableSeeding(ScriptMethodParams &params);
-	static void FireSetStrength(ScriptMethodParams &params);
-	static void FireRemoveObject(ScriptMethodParams &params);
-	static void FireUpdate(ScriptMethodParams &params);
-	static void FireStop(ScriptMethodParams &params);
+	void FireAddObject(ScriptMethodParams &params);
+	void FirePreHeat(ScriptMethodParams &params);
+	void FireDisableSeeding(ScriptMethodParams &params);
+	void FireEnableSeeding(ScriptMethodParams &params);
+	void FireSetStrength(ScriptMethodParams &params);
+	void FireRemoveObject(ScriptMethodParams &params);
+	void FireUpdate(ScriptMethodParams &params);
+	void FireStop(ScriptMethodParams &params);
 
 public:
-	AGSFire();
+	AGSFire() : PluginBase() {}
+	virtual ~AGSFire() {}
+
+	const char *AGS_GetPluginName() override;
+	void AGS_EngineStartup(IAGSEngine *engine) override;
 };
 
 } // namespace AGSFire

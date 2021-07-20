@@ -67,8 +67,6 @@ class gWindow;
                       Input dispatching functions
  * ===================================================================== */
 
-void HandleMouse(gMouseState &mouse);
-void HandleKeyStroke(int key, int qual);
 void HandleTimerTick(long newTick);
 void EventLoop(bool &running, bool modal = false);
 
@@ -240,6 +238,18 @@ public:
 	                qualifier;              // qualifier from keyboard
 
 	uint32          timeStamp;              // time of message
+
+	gPanelMessage() {
+		leftButton = 0;
+		rightButton = 0;
+		inPanel = 0;
+		pointerEnter = 0;
+		pointerLeave = 0;
+		doubleClick = 0;
+		key = 0;
+		qualifier = 0;
+		timeStamp = 0;
+	}
 };
 
 /* ===================================================================== *
@@ -349,8 +359,8 @@ private:
 	};
 
 	static int      dragMode;               // current dragging mode
-	static Rect16   dragExtent;             // dragging extent
-	static Point16  dragOffset;             // offset to window origin
+	static StaticRect  dragExtent;             // dragging extent
+	static StaticPoint16 dragOffset;             // offset to window origin
 
 	void shadow(void);
 
@@ -402,6 +412,7 @@ public:
 class gControl : public gPanel {
 public:
 	uint8               accelKey;
+	gPanelList *_list;
 
 	gControl(gPanelList &, const Rect16 &, const char *, uint16, AppFunc *cmd = NULL);
 	gControl(gPanelList &, const Rect16 &, gPixelMap &, uint16, AppFunc *cmd = NULL);
@@ -488,6 +499,16 @@ class gToolBase {
 
 public:
 	bool            mouseHintSet;           // true if mouse hint is up.
+
+	gToolBase() {
+		mouseWindow = nullptr;
+		activeWindow = nullptr;
+		mousePanel = nullptr;
+		activePanel = nullptr;
+		leftDrag = 0;
+		rightDrag = 0;
+		lastMouseMoveTime = 0;
+	}
 
 private:
 	void setMsgQ(gPanelMessage &msg_, gPanel *panel) {

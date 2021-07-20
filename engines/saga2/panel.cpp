@@ -36,9 +36,7 @@
 namespace Saga2 {
 
 //extern vDisplayPage   *drawPage;
-extern gMousePointer pointer;           // the actual pointer
 extern char iniFile[];
-extern vDisplayPage protoPage;
 
 //  Function to enable/disable user interface keys
 extern bool enableUIKeys(bool enabled);
@@ -47,7 +45,6 @@ extern bool enableUIKeys(bool enabled);
    global dispatcher base
  * ======================================================================= */
 
-gToolBase           G_BASE;
 gDisplayPort        *globalPort;
 gFont               *mainFont;
 
@@ -64,6 +61,10 @@ gPanel::gPanel(gWindow &win, const Rect16 &box, AppFunc *cmd)
 	ghosted = 0;
 	selected = 0;
 	imageLabel = 0;
+	title = nullptr;
+	id = 0;
+	wantMousePoll = 0;
+	userData = nullptr;
 }
 
 gPanel::gPanel(gPanelList &list, const Rect16 &box,
@@ -77,6 +78,8 @@ gPanel::gPanel(gPanelList &list, const Rect16 &box,
 	imageLabel = 0;
 	command = cmd;
 	id = ident;
+	wantMousePoll = 0;
+	userData = nullptr;
 }
 
 gPanel::gPanel(gPanelList &list, const Rect16 &box,
@@ -90,6 +93,8 @@ gPanel::gPanel(gPanelList &list, const Rect16 &box,
 	imageLabel = 1;
 	command = cmd;
 	id = ident;
+	wantMousePoll = 0;
+	userData = nullptr;
 }
 
 gPanel::gPanel(gPanelList &list, const StaticRect &box,
@@ -103,16 +108,17 @@ gPanel::gPanel(gPanelList &list, const StaticRect &box,
 	imageLabel = 0;
 	command = cmd;
 	id = ident;
+	wantMousePoll = 0;
+	userData = nullptr;
 }
 
 //  Dummy virtual functions
 
 gPanel::~gPanel() {
-	if (this == G_BASE.mousePanel)
-		G_BASE.mousePanel = NULL;
-	if (this == G_BASE.activePanel)
-		G_BASE.activePanel = NULL;
-
+	if (this == g_vm->_toolBase->mousePanel)
+		g_vm->_toolBase->mousePanel = NULL;
+	if (this == g_vm->_toolBase->activePanel)
+		g_vm->_toolBase->activePanel = NULL;
 }
 void gPanel::draw(void) {}
 void gPanel::drawClipped(gPort &, const Point16 &, const Rect16 &) {}
@@ -144,7 +150,7 @@ void gPanel::ghost(bool b) {
 }
 
 bool gPanel::isActive(void) {
-	return (this == G_BASE.activePanel);
+	return (this == g_vm->_toolBase->activePanel);
 }
 
 void gPanel::notify(enum gEventType type, int32 value) {
@@ -153,8 +159,8 @@ void gPanel::notify(enum gEventType type, int32 value) {
 	ev.panel = this;
 	ev.eventType = type;
 	ev.value = value;
-	ev.mouse.x = G_BASE.pickPos.x - extent.x;
-	ev.mouse.y = G_BASE.pickPos.y - extent.y;
+	ev.mouse.x = g_vm->_toolBase->pickPos.x - extent.x;
+	ev.mouse.y = g_vm->_toolBase->pickPos.y - extent.y;
 	ev.window = &window;
 
 	if (command) command(ev);
@@ -166,11 +172,11 @@ bool gPanel::activate(gEventType) {
 }
 
 void gPanel::deactivate(void) {
-	if (isActive()) G_BASE.activePanel = NULL;
+	if (isActive()) g_vm->_toolBase->activePanel = NULL;
 }
 
 void gPanel::makeActive(void) {
-	G_BASE.setActive(this);
+	g_vm->_toolBase->setActive(this);
 }
 
 void gPanel::invalidate(Rect16 *) {
@@ -235,9 +241,9 @@ void gPanel::drawTitle(enum text_positions placement) {
 		port.setStyle(textStyleUnderBar);    // set style to do underbars
 		port.moveTo(r.x, r.y);           // move to new text pos
 
-		pointer.hide(*globalPort, r);        // hide the pointer
+		g_vm->_pointer->hide(*globalPort, r);        // hide the pointer
 		port.drawText(title, -1);            // draw the text
-		pointer.show(*globalPort, r);        // hide the pointer
+		g_vm->_pointer->show(*globalPort, r);        // hide the pointer
 	}
 }
 
@@ -375,9 +381,9 @@ gPanel *gPanelList::keyTest(int16 key) {
 
 //  gWindow static variables
 
-int             gWindow::dragMode;              // current dragging mode
-Rect16          gWindow::dragExtent;            // dragging extent
-Point16         gWindow::dragOffset;            // offset to window origin
+int           gWindow::dragMode = 0;              // current dragging mode
+StaticRect    gWindow::dragExtent = {0, 0, 0, 0};            // dragging extent
+StaticPoint16 gWindow::dragOffset = {0, 0};            // offset to window origin
 
 gWindow::gWindow(const Rect16 &box, uint16 ident, const char saveName[], AppFunc *cmd)
 	: gPanelList(*this, box, NULL, ident, cmd)
@@ -393,7 +399,6 @@ gWindow::gWindow(const Rect16 &box, uint16 ident, const char saveName[], AppFunc
 
 	//  Set up the window's gPort
 
-	windowPort.setDisplayPage(globalPort->displayPage);
 	windowPort.setFont(mainFont);
 	windowPort.setPenMap(globalPort->penMap);
 
@@ -427,15 +432,15 @@ bool gWindow::open(void) {
 
 	//  Send a "pointer-leave" message to mouse panel.
 
-	G_BASE.leavePanel();
-	G_BASE.windowList.push_front(this);
-	G_BASE.activeWindow = this;
-	G_BASE.setActive(NULL);
+	g_vm->_toolBase->leavePanel();
+	g_vm->_toolBase->windowList.push_front(this);
+	g_vm->_toolBase->activeWindow = this;
+	g_vm->_toolBase->setActive(NULL);
 
-//	pointer.hide();
+//	g_vm->_pointer->hide();
 //	if (backSave) backSave->save( *globalPort );
-//	pointer.setImage( *pointerImage, pointerOffset.x, pointerOffset.y );
-//	pointer.show();
+//	g_vm->_pointer->setImage( *pointerImage, pointerOffset.x, pointerOffset.y );
+//	g_vm->_pointer->show();
 
 	openFlag = true;
 
@@ -448,8 +453,8 @@ void gWindow::close(void) {
 	if (!isOpen()) return;
 
 	//  If any panels on this window are active, then deactivate them.
-	if (G_BASE.activePanel && G_BASE.activePanel->getWindow() == this)
-		G_BASE.activePanel->deactivate();
+	if (g_vm->_toolBase->activePanel && g_vm->_toolBase->activePanel->getWindow() == this)
+		g_vm->_toolBase->activePanel->deactivate();
 
 	//  Don't close a window that is being dragged (should never happen,
 	//  but just in case).
@@ -460,10 +465,10 @@ void gWindow::close(void) {
 
 	//  remove this window from the window list.
 
-	G_BASE.windowList.remove(this);
+	g_vm->_toolBase->windowList.remove(this);
 
-	G_BASE.mouseWindow = G_BASE.activeWindow = G_BASE.windowList.front();
-	G_BASE.mousePanel = G_BASE.activePanel = NULL;
+	g_vm->_toolBase->mouseWindow = g_vm->_toolBase->activeWindow = g_vm->_toolBase->windowList.front();
+	g_vm->_toolBase->mousePanel = g_vm->_toolBase->activePanel = NULL;
 }
 
 //  Move the window to the front...
@@ -471,11 +476,11 @@ void gWindow::close(void) {
 void gWindow::toFront(void) {            // re-order the windows
 	if (!isOpen()) return;
 
-	G_BASE.windowList.remove(this);
-	G_BASE.windowList.push_front(this);
+	g_vm->_toolBase->windowList.remove(this);
+	g_vm->_toolBase->windowList.push_front(this);
 
-	G_BASE.activePanel = NULL;
-	G_BASE.activeWindow = this;
+	g_vm->_toolBase->activePanel = NULL;
+	g_vm->_toolBase->activeWindow = this;
 
 	//  redraw the window
 	update(extent);
@@ -518,7 +523,7 @@ void gWindow::setExtent(const Rect16 &r) {
 
 //  insert window into window list
 void gWindow::insert(void) {
-	G_BASE.windowList.push_front(this);
+	g_vm->_toolBase->windowList.push_front(this);
 }
 
 
@@ -589,11 +594,11 @@ void gWindow::setPointer( gPixelMap &map, int x, int y )
     pointerOffset.x = x;
     pointerOffset.y = y;
 
-    if (this == G_BASE.activeWindow)
+    if (this == g_vm->_toolBase->activeWindow)
     {
-        pointer.hide();
-        pointer.setImage( *pointerImage, pointerOffset.x, pointerOffset.y );
-        pointer.show();
+        g_vm->_pointer->hide();
+        g_vm->_pointer->setImage( *pointerImage, pointerOffset.x, pointerOffset.y );
+        g_vm->_pointer->show();
     }
 }
 */
@@ -608,6 +613,7 @@ gControl::gControl(gPanelList &list, const Rect16 &box, const char *title_, uint
 
 	//  Add control to the window's control list.
 
+	_list = &list;
 	list.contents.push_back(this);
 }
 
@@ -617,11 +623,12 @@ gControl::gControl(gPanelList &list, const Rect16 &box, gPixelMap &img, uint16 i
 
 	//  Add control to the window's control list.
 
+	_list = &list;
 	list.contents.push_back(this);
 }
 
 gControl::~gControl() {
-	window.contents.remove(this);
+	_list->contents.remove(this);
 }
 
 gControl::gControl(gPanelList &list, const StaticRect &box, const char *title_, uint16 ident,
@@ -630,6 +637,7 @@ gControl::gControl(gPanelList &list, const StaticRect &box, const char *title_, 
 
 	//  Add control to the window's control list.
 
+	_list = &list;
 	list.contents.push_back(this);
 }
 
@@ -663,12 +671,12 @@ gPanel *gControl::keyTest(int16 key) {
 //  drawClipped with the main port.
 
 void gControl::draw(void) {
-	pointer.hide(window.windowPort, extent);
+	g_vm->_pointer->hide(window.windowPort, extent);
 	if (displayEnabled())
 		drawClipped(*globalPort,
 		            Point16(-window.extent.x, -window.extent.y),
 		            window.extent);
-	pointer.show(window.windowPort, extent);
+	g_vm->_pointer->show(window.windowPort, extent);
 }
 
 /* ===================================================================== *
@@ -836,8 +844,8 @@ void gToolBase::handleMouse(Common::Event &event, uint32 time) {
 
 	if (!activePanel /* && !ms.right */) {
 		//  If the point is within the window
-
-		for (Common::List<gWindow *>::iterator it = windowList.begin(); it != windowList.end(); ++it) {
+		Common::List<gWindow *>::iterator it;
+		for (it = windowList.begin(); it != windowList.end(); ++it) {
 			w = *it;
 			if (w->extent.ptInside(_curMouseState.pos) || w->isModal()) {
 				//  Set up the pick position relative to the window
@@ -854,7 +862,7 @@ void gToolBase::handleMouse(Common::Event &event, uint32 time) {
 			}
 		}
 
-		if (w == NULL) {
+		if (it == windowList.end()) {
 			prevState = _curMouseState;
 			return;
 		}
@@ -1080,7 +1088,7 @@ void HandleTimerTick(long tick) {
 
 	if (tick - lastTick > 1) {
 		lastTick = tick;
-		G_BASE.handleTimerTick(tick);
+		g_vm->_toolBase->handleTimerTick(tick);
 	}
 }
 
@@ -1089,7 +1097,6 @@ void HandleTimerTick(long tick) {
  * ===================================================================== */
 
 void initPanels(gDisplayPort &port) {
-	port.setDisplayPage(&protoPage);
 	globalPort = &port;
 	mainFont = &Helv11Font;
 }
@@ -1098,19 +1105,19 @@ void cleanupPanels(void) {
 }
 
 int16 leftButtonState(void) {
-	return G_BASE.msg.leftButton;
+	return g_vm->_toolBase->msg.leftButton;
 }
 
 int16 rightButtonState(void) {
-	return G_BASE.msg.rightButton;
+	return g_vm->_toolBase->msg.rightButton;
 }
 
 void LockUI(bool state) {
 	if (state == true) {
 		if (lockUINest <= 0) {
-			pointer.hide();
+			g_vm->_pointer->hide();
 			enableUIKeys(false);
-			G_BASE.setActive(NULL);
+			g_vm->_toolBase->setActive(NULL);
 		}
 		lockUINest++;
 	} else {
@@ -1118,7 +1125,7 @@ void LockUI(bool state) {
 		assert(lockUINest >= 0);
 		if (lockUINest <= 0) {
 			enableUIKeys(true);
-			pointer.show();
+			g_vm->_pointer->show();
 		}
 	}
 }

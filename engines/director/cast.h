@@ -50,21 +50,21 @@ typedef Common::HashMap<byte, byte> CharMap;
 typedef Common::HashMap<uint16, uint16> FontSizeMap;
 struct FontXPlatformInfo {
 	Common::String toFont;
-	bool remapChars;
+		bool remapChars;
 	FontSizeMap sizeMap;
 
 	FontXPlatformInfo() : remapChars(false) {}
 };
 typedef Common::HashMap<Common::String, FontXPlatformInfo *> FontXPlatformMap;
 
-struct FontInfo {
+struct FontMapEntry {
 	uint16 toFont;
 	bool remapChars;
 	FontSizeMap sizeMap;
 
-	FontInfo() : toFont(0), remapChars(false) {}
+	FontMapEntry() : toFont(0), remapChars(false) {}
 };
-typedef Common::HashMap<uint16, FontInfo *> FontMap;
+typedef Common::HashMap<uint16, FontMapEntry *> FontMap;
 
 class Cast {
 public:
@@ -82,6 +82,7 @@ public:
 	void loadCastData(Common::SeekableReadStreamEndian &stream, uint16 id, Resource *res);
 	void loadCastInfo(Common::SeekableReadStreamEndian &stream, uint16 id);
 	void loadLingoContext(Common::SeekableReadStreamEndian &stream);
+	void loadExternalSound(Common::SeekableReadStreamEndian &stream);
 
 	void loadCastChildren();
 	void loadSoundCasts();
@@ -96,8 +97,15 @@ public:
 	const Stxt *getStxt(int castId);
 	Common::String getVideoPath(int castId);
 
+	// release all castmember's widget, should be called when we are changing movie.
+	// because widget is handled by channel, thus we should clear all of those run-time info when we are switching the movie. (because we will create new widgets for cast)
+	void releaseCastMemberWidget();
+
 	void dumpScript(const char *script, ScriptType type, uint16 id);
 	PaletteV4 loadPalette(Common::SeekableReadStreamEndian &stream);
+
+	Common::CodePage getPlatformEncoding();
+	Common::U32String decodeString(const Common::String &str);
 
 private:
 	void loadScriptText(Common::SeekableReadStreamEndian &stream, uint16 id);
@@ -105,7 +113,6 @@ private:
 	void loadFontMapV4(Common::SeekableReadStreamEndian &stream);
 	void loadFXmp(Common::SeekableReadStreamEndian &stream);
 	bool readFXmpLine(Common::SeekableReadStreamEndian &stream);
-	Common::String getString(Common::String str);
 
 public:
 	Archive *_castArchive;
@@ -113,7 +120,8 @@ public:
 	Common::Platform _platform;
 	uint16 _castLibID;
 
-	CharMap _charMap;
+	CharMap _macCharsToWin;
+	CharMap _winCharsToMac;
 	FontXPlatformMap _fontXPlatformMap;
 	FontMap _fontMap;
 

@@ -24,8 +24,6 @@
  *   (c) 1993-1996 The Wyrmkeep Entertainment Co.
  */
 
-#define FORBIDDEN_SYMBOL_ALLOW_ALL // FIXME: Remove
-
 #include "saga2/saga2.h"
 #include "saga2/idtypes.h"
 #include "saga2/magic.h"
@@ -35,17 +33,9 @@
 #include "saga2/rect.h"
 #include "saga2/spellio.h"
 #include "saga2/spelshow.h"
-#include "saga2/savefile.h"
+#include "saga2/saveload.h"
 
 namespace Saga2 {
-
-const ChunkID   spellInstCountID = MakeID('S', 'P', 'E', 'L');
-
-/* ===================================================================== *
-   Imports
- * ===================================================================== */
-
-extern SpellDisplayList         activeSpells;
 
 /* ===================================================================== *
    partial SpellDisplayPrototype implementation
@@ -73,6 +63,7 @@ SpellDisplayPrototype::SpellDisplayPrototype(ResourceSpellItem *rsi) {
 	colorMap[1] = rsi->cm1;
 	colorMap[2] = 0;
 	colorMap[3] = 0;
+	ID = spellNone;
 }
 
 /* ===================================================================== *
@@ -215,25 +206,22 @@ void SpellStuff::addEffect(ResourceSpellEffect *rse) {
 void initSpellState(void) {
 }
 
-// ------------------------------------------------------------------
-// serialize active spells
-
-void saveSpellState(SaveFileConstructor &saveGame) {
-	activeSpells.save(saveGame);
+void saveSpellState(Common::OutSaveFile *outS) {
+	debugC(2, kDebugSaveload, "Saving SpellState");
+	g_vm->_activeSpells->write(outS);
 }
 
-// ------------------------------------------------------------------
-// read serialized active spells
+void loadSpellState(Common::InSaveFile *in) {
+	debugC(2, kDebugSaveload, "Loading SpellState");
 
-void loadSpellState(SaveFileReader &saveGame) {
-	activeSpells.load(saveGame);
+	g_vm->_activeSpells->read(in);
 }
 
 // ------------------------------------------------------------------
 // cleanup active spells
 
 void cleanupSpellState(void) {
-	activeSpells.wipe();
+	g_vm->_activeSpells->wipe();
 }
 
 // ------------------------------------------------------------------
@@ -288,7 +276,55 @@ StorageSpellTarget::StorageSpellTarget() {
 	tag = NoActiveItem;
 }
 
-StorageSpellInstance::StorageSpellInstance() {
+void StorageSpellTarget::read(Common::InSaveFile *in) {
+	ActiveItemID tagID;
+
+	type = in->readSint16LE();
+	loc.load(in);
+	obj = in->readUint16LE();
+	tagID = in->readSint16LE();
+	tag = ActiveItemID(tagID);
+}
+
+void StorageSpellTarget::write(Common::MemoryWriteStreamDynamic *out) {
+	out->writeSint16LE(type);
+	loc.write(out);
+	out->writeUint16LE(obj);
+	out->writeSint16LE(tag.val);
+}
+
+StorageSpellInstance::StorageSpellInstance() : implementAge(0), effect(0), dProto(spellNone), caster(0),
+	world(0), age(0), spell(spellNone), maxAge(0), effSeq(0), eListSize(0) {
+}
+
+void StorageSpellInstance::read(Common::InSaveFile *in) {
+	implementAge = in->readSint32LE();
+	effect = in->readUint16LE();
+	warning("StorageSpellInstance::read: Check SpellID size");
+	dProto = (SpellID)in->readUint32LE();
+	caster = in->readUint16LE();
+	target.read(in);
+	world = in->readUint16LE();
+	age = in->readSint32LE();
+	spell = (SpellID)in->readUint32LE();
+	maxAge = in->readSint32LE();
+	effSeq = in->readSint16LE();
+	eListSize = in->readSint16LE();
+}
+
+void StorageSpellInstance::write(Common::MemoryWriteStreamDynamic *out) {
+	out->writeSint32LE(implementAge);
+	out->writeUint16LE(effect);
+	warning("StorageSpellInstance::write: Check SpellID size");
+	out->writeUint32LE(dProto);
+	out->writeUint16LE(caster);
+	target.write(out);
+	out->writeUint16LE(world);
+	out->writeSint32LE(age);
+	out->writeUint32LE(spell);
+	out->writeSint32LE(maxAge);
+	out->writeSint16LE(effSeq);
+	out->writeSint16LE(eListSize);
 }
 
 SpellTarget::SpellTarget(StorageSpellTarget &sst) {
@@ -333,34 +369,41 @@ size_t SpellDisplayList::saveSize(void) {
 	return total;
 }
 
-void SpellDisplayList::save(SaveFileConstructor &saveGame) {
-	size_t chunkSize = saveSize();
+void SpellDisplayList::write(Common::OutSaveFile *outS) {
+	outS->write("SPEL", 4);
+	CHUNK_BEGIN;
+	out->writeUint16LE(count);
 
-	saveGame.newChunk(spellInstCountID, chunkSize);
+	debugC(3, kDebugSaveload, "... count = %d", count);
 
-	saveGame.write(&count, sizeof(count));
 	if (count) {
 		for (int i = 0; i < count; i++) {
+			debugC(3, kDebugSaveload, "Saving Spell Instance %d", i);
 			StorageSpellInstance ssi = StorageSpellInstance(*spells[i]);
-			saveGame.write(&ssi, sizeof(ssi));
-			spells[i]->saveEffect(saveGame);
+			ssi.write(out);
+			spells[i]->writeEffect(out);
 		}
 	}
+	CHUNK_END;
 }
 
-void SpellDisplayList::load(SaveFileReader &saveGame) {
+void SpellDisplayList::read(Common::InSaveFile *in) {
 	uint16 tCount;
 
-	saveGame.read(&tCount, sizeof(tCount));
+	tCount = in->readUint16LE();
+
+	debugC(3, kDebugSaveload, "... count = %d", tCount);
+
 	assert(tCount < maxCount);
 	if (tCount) {
 		for (int i = 0; i < tCount; i++) {
+			debugC(3, kDebugSaveload, "Loading Spell Instance %d", i);
 			SpellInstance *si;
 			StorageSpellInstance ssi;
-			saveGame.read(&ssi, sizeof(ssi));
+			ssi.read(in);
 			si = new SpellInstance(ssi);
 			add(si);
-			si->loadEffect(saveGame, ssi.eListSize);
+			si->readEffect(in, ssi.eListSize);
 		}
 	}
 	assert(tCount == count);
@@ -387,21 +430,21 @@ size_t SpellInstance::saveSize(void) {
 	return total;
 }
 
-void SpellInstance::saveEffect(SaveFileConstructor &saveGame) {
+void SpellInstance::writeEffect(Common::MemoryWriteStreamDynamic *out) {
 	if (eList.count > 0 && !(maxAge > 0 && (age + 1) > maxAge))
 		for (int32 i = 0; i < eList.count; i++) {
 			StorageEffectron se = StorageEffectron(*eList.displayList[i].efx);
-			saveGame.write(&se, sizeof(se));
+			se.write(out);
 		}
 }
 
-void SpellInstance::loadEffect(SaveFileReader &saveGame, uint16 eListSize) {
+void SpellInstance::readEffect(Common::InSaveFile *in, uint16 eListSize) {
 	assert(eListSize == effect->nodeCount);
 	eList.count = effect->nodeCount; //sdp->effCount;
 	if (eList.count)
 		for (int32 i = 0; i < eList.count; i++) {
 			StorageEffectron se;
-			saveGame.read(&se, sizeof(se));
+			se.read(in);
 			Effectron *e = new Effectron(se, this);
 			eList.displayList[i].efx = e;
 		}
@@ -447,6 +490,45 @@ StorageEffectron::StorageEffectron(Effectron &e) {
 	age =           e.age;
 }
 
+void StorageEffectron::read(Common::InSaveFile *in) {
+	flags = in->readUint32LE();
+	size.load(in);
+	hitBox.read(in);
+	partno = in->readSint16LE();
+	screenCoords.load(in);
+	start.load(in);
+	finish.load(in);
+	current.load(in);
+	velocity.load(in);
+	acceleration.load(in);
+	totalSteps = in->readUint16LE();
+	stepNo = in->readUint16LE();
+	hgt = in->readSint16LE();
+	brd = in->readSint16LE();
+	pos = in->readSint32LE();
+	spr = in->readSint32LE();
+	age = in->readSint32LE();
+}
+
+void StorageEffectron::write(Common::MemoryWriteStreamDynamic *out) {
+	out->writeUint32LE(flags);
+	size.write(out);
+	hitBox.write(out);
+	out->writeSint16LE(partno);
+	screenCoords.write(out);
+	start.write(out);
+	finish.write(out);
+	current.write(out);
+	velocity.write(out);
+	acceleration.write(out);
+	out->writeUint16LE(totalSteps);
+	out->writeUint16LE(stepNo);
+	out->writeSint16LE(hgt);
+	out->writeSint16LE(brd);
+	out->writeSint32LE(pos);
+	out->writeSint32LE(spr);
+	out->writeSint32LE(age);
+}
 
 Effectron::Effectron(StorageEffectron &se, SpellInstance *si) {
 	flags =         se.flags;

@@ -44,14 +44,13 @@
 
 namespace Saga2 {
 
-extern SpellStuff   spellBook[];
+extern SpellStuff   *spellBook;
 extern uint8        identityColors[256];
 
 #ifdef __WATCOMC__
 #pragma off (unreferenced);
 #endif
 
-extern PlayerActor playerList[];    //  Master list of all PlayerActors
 
 extern ObjectSoundFXs   *objectSoundFXTable;    // the global object sound effects table
 

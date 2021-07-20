@@ -31,6 +31,7 @@
 #include "ultima/ultima8/graphics/fade_to_modal_process.h"
 #include "ultima/ultima8/ultima8.h"
 #include "ultima/ultima8/games/game_data.h"
+#include "ultima/ultima8/games/game.h"
 #include "ultima/ultima8/kernel/mouse.h"
 #include "ultima/ultima8/kernel/kernel.h"
 #include "ultima/ultima8/usecode/uc_machine.h"
@@ -101,7 +102,7 @@ static Common::SeekableReadStream *_tryLoadCruSubtitle(const Std::string &filena
 
 DEFINE_RUNTIME_CLASSTYPE_CODE(MovieGump)
 
-MovieGump::MovieGump() : ModalGump(), _player(nullptr), _subtitleWidget(0) {
+MovieGump::MovieGump() : ModalGump(), _player(nullptr), _subtitleWidget(0), _lastFrameNo(-1) {
 
 }
 
@@ -164,8 +165,9 @@ void MovieGump::run() {
 				TextWidget *subtitle = dynamic_cast<TextWidget *>(getGump(_subtitleWidget));
 				if (subtitle)
 					subtitle->Close();
-				// Create a new TextWidget
-				TextWidget *widget = new TextWidget(0, 0, _subtitles[f], true, 4, 640, 10);
+				// Create a new TextWidget. No Regret uses font 3
+				int subtitle_font = GAME_IS_REMORSE ? 4 : 3;
+				TextWidget *widget = new TextWidget(0, 0, _subtitles[f], true, subtitle_font, 640, 10);
 				widget->InitGump(this);
 				widget->setRelativePosition(BOTTOM_CENTER, 0, -10);
 				// Subtitles should be white.
@@ -268,21 +270,69 @@ void MovieGump::loadSubtitles(Common::SeekableReadStream *rs) {
 
 void MovieGump::loadTXTSubs(Common::SeekableReadStream *rs) {
 	int frameno = 0;
-	Common::String subtitles;
 	while (!rs->eos()) {
 		Common::String line = rs->readLine();
 		if (line.hasPrefix("@frame ")) {
+			if (frameno != 0) {
+				// two @frame directives in a row means that the last
+				// subtitle should be turned *off* at the first frame
+				_subtitles[frameno] = "";
+			}
 			frameno = atoi(line.c_str() + 7);
-			subtitles += '\n';
 		} else {
 			_subtitles[frameno] = line;
-			subtitles += line;
+			frameno = 0;
 		}
 	}
 }
 
+// Some fourCCs used in IFF files
+static const uint32 IFF_MAGIC   = 0x464F524D;  // 'FORM'
+static const uint32 IFF_LANG    = 0x4C414E47;  // 'LANG'
+static const uint32 IFF_LANG_FR = 0x4652454E;  // 'FREN'
+static const uint32 IFF_LANG_EN = 0x454E474C;  // 'ENGL'
+static const uint32 IFF_LANG_DE = 0x4745524D;  // 'GERM'
+
 void MovieGump::loadIFFSubs(Common::SeekableReadStream *rs) {
-	warning("TODO: load IFF subtitle data");
+	uint32 magic = rs->readUint32BE();
+	if (magic != IFF_MAGIC) {
+		warning("Error loading IFF file, invalid magic.");
+		return;
+	}
+
+	rs->skip(2);
+	uint16 totalsize = rs->readUint16BE();
+	if (totalsize != rs->size() - rs->pos()) {
+		warning("Error loading IFF file: size invalid.");
+		return;
+	}
+
+	uint32 lang_magic = rs->readUint32BE();
+	if (lang_magic != IFF_LANG) {
+		warning("Error loading IFF file: invalid magic.");
+		return;
+	}
+
+	const Common::Language lang = Ultima8Engine::get_instance()->getLanguage();
+	while (rs->pos() < rs->size()) {
+		uint32 lang_code = rs->readUint32BE();
+		uint32 lang_len = rs->readUint32BE();
+		uint32 lang_end = rs->pos() + lang_len;
+		if ((lang == Common::FR_FRA && lang_code == IFF_LANG_FR)
+			|| (lang == Common::DE_DEU && lang_code == IFF_LANG_DE)
+			|| (lang == Common::EN_ANY && lang_code == IFF_LANG_EN)) {
+			while (rs->pos() < lang_end) {
+				// Take care of the mix of LE and BE.
+				uint16 frameoff = rs->readUint16LE();
+				rs->skip(1); // what's this?
+				uint32 slen = rs->readUint16BE();
+				const Common::String line = rs->readString('\0', slen);
+				_subtitles[frameoff] = line;
+			}
+		} else {
+			rs->skip(lang_len);
+		}
+	}
 }
 
 bool MovieGump::loadData(Common::ReadStream *rs) {

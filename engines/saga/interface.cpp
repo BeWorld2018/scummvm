@@ -1221,6 +1221,10 @@ bool Interface::processTextInput(Common::KeyState keystate) {
 	default:
 		if (((keystate.ascii <= 255) && (Common::isAlnum(keystate.ascii))) || (keystate.ascii == ' ') ||
 		    (keystate.ascii == '-') || (keystate.ascii == '_')) {
+			// This conversion actually works if the isAlnum() check is removed (which locks out all characters > 127).
+			// However, some glyphs seem to missing from the font, so it might be best to keep the limitation...
+			keystate.ascii = Common::U32String(Common::String::format("%c", keystate.ascii), Common::kISO8859_1).encode(_vm->getLanguage() == Common::JA_JPN ? Common::kWindows932 : Common::kDos850).firstChar();
+
 			if (_textInputStringLength < save_title_size - 1) {
 				ch[0] = keystate.ascii;
 				tempWidth = _vm->_font->getStringWidth(kKnownFontSmall, ch, 0, kFontNormal);
@@ -1367,25 +1371,30 @@ void Interface::setSave(PanelButton *panelButton) {
 	_savePanel.currentButton = NULL;
 	uint titleNumber;
 	char *fileName;
+
+	char desc[28];
+	Common::strlcpy(desc, Common::U32String(_textInputString, Common::kDos850).encode(Common::kUtf8).c_str(), sizeof(desc));
+
 	switch (panelButton->id) {
 		case kTextSave:
 			if (_textInputStringLength == 0) {
 				break;
 			}
+
 			if (!_vm->isSaveListFull() && (_optionSaveFileTitleNumber == 0)) {
-				if (_vm->locateSaveFile(_textInputString, titleNumber)) {
+				if (_vm->locateSaveFile(desc, titleNumber)) {
 					fileName = _vm->calcSaveFileName(_vm->getSaveFile(titleNumber)->slotNumber);
-					_vm->save(fileName, _textInputString);
+					_vm->save(fileName, desc);
 					_optionSaveFileTitleNumber = titleNumber;
 				} else {
 					fileName = _vm->calcSaveFileName(_vm->getNewSaveSlotNumber());
-					_vm->save(fileName, _textInputString);
+					_vm->save(fileName, desc);
 					_vm->fillSaveList();
 					calcOptionSaveSlider();
 				}
 			} else {
 				fileName = _vm->calcSaveFileName(_vm->getSaveFile(_optionSaveFileTitleNumber)->slotNumber);
-				_vm->save(fileName, _textInputString);
+				_vm->save(fileName, desc);
 			}
 			resetSaveReminder();
 
@@ -1628,10 +1637,13 @@ void Interface::setOption(PanelButton *panelButton) {
 		}
 		break;
 	case kTextMusic:
-		_vm->_musicVolume = _vm->_musicVolume + 25;
-		if (_vm->_musicVolume > 255) _vm->_musicVolume = 0;
-		_vm->_music->setVolume(_vm->_musicVolume, 1);
-		ConfMan.setInt("music_volume", _vm->_musicVolume);
+		int userVolume;
+		userVolume = ConfMan.getInt("music_volume");
+		userVolume = userVolume + 25;
+		if (userVolume > 255)
+			userVolume = 0;
+		ConfMan.setInt("music_volume", userVolume);
+		_vm->_music->syncSoundSettings();
 		break;
 	case kTextSound:
 		_vm->_soundVolume = _vm->_soundVolume + 25;
@@ -2268,8 +2280,10 @@ void Interface::drawPanelButtonText(InterfacePanel *panel, PanelButton *panelBut
 		}
 		break;
 	case kTextMusic:
-		if (_vm->_musicVolume) {
-			textId = kText10Percent + _vm->_musicVolume / 25 - 1;
+		int userVolume;
+		userVolume = ConfMan.getInt("music_volume");
+		if (userVolume) {
+			textId = kText10Percent + userVolume / 25 - 1;
 			if (textId > kTextMax) {
 				textId = kTextMax;
 			}

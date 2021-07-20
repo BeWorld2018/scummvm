@@ -274,7 +274,6 @@ bool GameState::saveGame(Common::WriteStream *file) {
 	file->write(inventoryFlags, NUM_INVENTORY_ITEMS);
 
 	file->writeByte(inventoryNumLeafs);
-	// TODO: writeUInt16LE in disassembly
 	file->writeByte(usingSabre ? 1 : 0);
 	file->writeByte(0);
 
@@ -285,19 +284,16 @@ void GameState::setGameFlag(uint8 index, uint8 value) {
 	debug(2, "Set gameStateFlags[%u]=%u", index, value);
 	_gameStateFlags[index] = value;
 
-	// all 4 slap videos
 	if ((index == GAMEFLAG_VIDEO_BAFFE || index == GAMEFLAG_VIDEO_BAFFE2 || index == GAMEFLAG_VIDEO_BAFFE3 || index == GAMEFLAG_VIDEO_BAFFE5) &&
 		_gameStateFlags[GAMEFLAG_VIDEO_BAFFE] != 0 && _gameStateFlags[GAMEFLAG_VIDEO_BAFFE2] != 0 && _gameStateFlags[GAMEFLAG_VIDEO_BAFFE3] != 0 && _gameStateFlags[GAMEFLAG_VIDEO_BAFFE5] != 0) {
+		// all 4 slap videos
 		_engine->unlockAchievement("LBA_ACH_012");
-	}
-	// second video of ferry trip
-	if (index == GAMEFLAG_VIDEO_BATEAU2) {
+	} else if (index == GAMEFLAG_VIDEO_BATEAU2) {
+		// second video of ferry trip
 		_engine->unlockAchievement("LBA_ACH_010");
-	}
-	if (index == (uint8)InventoryItems::kiUseSabre) {
+	} else if (index == (uint8)InventoryItems::kiUseSabre) {
 		_engine->unlockAchievement("LBA_ACH_002");
-	}
-	if (index == (uint8)InventoryItems::kBottleOfSyrup) {
+	} else if (index == (uint8)InventoryItems::kBottleOfSyrup) {
 		_engine->unlockAchievement("LBA_ACH_007");
 	}
 }
@@ -312,7 +308,7 @@ void GameState::processFoundItem(InventoryItems item) {
 	_engine->_redraw->redrawEngineActions(true);
 	_engine->_scene->sceneHero->staticFlags.bIsHidden = 0;
 
-	_engine->_screens->copyScreen(_engine->frontVideoBuffer, _engine->workVideoBuffer);
+	_engine->saveFrontBuffer();
 
 	const int32 itemCameraX = _engine->_grid->newCamera.x * BRICK_SIZE;
 	const int32 itemCameraY = _engine->_grid->newCamera.y * BRICK_HEIGHT;
@@ -444,7 +440,7 @@ void GameState::processFoundItem(InventoryItems item) {
 }
 
 void GameState::processGameChoices(TextId choiceIdx) {
-	_engine->_screens->copyScreen(_engine->frontVideoBuffer, _engine->workVideoBuffer);
+	_engine->saveFrontBuffer();
 
 	_gameChoicesSettings.reset();
 	_gameChoicesSettings.setTextBankId((TextBankId)((int)_engine->_scene->sceneTextBank + (int)TextBankId::Citadel_Island));
@@ -486,7 +482,7 @@ void GameState::processGameoverAnimation() {
 
 	// TODO: inSceneryView
 	_engine->setPalette(_engine->_screens->paletteRGBA);
-	_engine->_screens->copyScreen(_engine->frontVideoBuffer, _engine->workVideoBuffer);
+	_engine->saveFrontBuffer();
 	BodyData gameOverPtr;
 	if (!gameOverPtr.loadFromHQR(Resources::HQR_RESS_FILE, RESSHQR_GAMEOVERMDL)) {
 		return;
@@ -509,7 +505,7 @@ void GameState::processGameoverAnimation() {
 		const int32 avg = _engine->_collision->getAverageValue(40000, 3200, 500, _engine->lbaTime - startLbaTime);
 		const int32 cdot = _engine->_screens->crossDot(1, 1024, 100, (_engine->lbaTime - startLbaTime) % 100);
 
-		_engine->_interface->blitBox(rect, _engine->workVideoBuffer, _engine->frontVideoBuffer);
+		_engine->blitWorkToFront(rect);
 		_engine->_renderer->setCameraAngle(0, 0, 0, 0, -cdot, 0, avg);
 		_engine->_renderer->renderIsoModel(0, 0, 0, ANGLE_0, ANGLE_0, ANGLE_0, gameOverPtr);
 		_engine->copyBlockPhys(rect);
@@ -518,7 +514,7 @@ void GameState::processGameoverAnimation() {
 	}
 
 	_engine->_sound->playSample(Samples::Explode);
-	_engine->_interface->blitBox(rect, _engine->workVideoBuffer, _engine->frontVideoBuffer);
+	_engine->blitWorkToFront(rect);
 	_engine->_renderer->setCameraAngle(0, 0, 0, 0, 0, 0, 3200);
 	_engine->_renderer->renderIsoModel(0, 0, 0, ANGLE_0, ANGLE_0, ANGLE_0, gameOverPtr);
 	_engine->copyBlockPhys(rect);
@@ -526,7 +522,7 @@ void GameState::processGameoverAnimation() {
 	_engine->delaySkip(2000);
 
 	_engine->_interface->resetClip();
-	_engine->_screens->copyScreen(_engine->workVideoBuffer, _engine->frontVideoBuffer);
+	_engine->restoreFrontBuffer();
 	initEngineProjections();
 
 	_engine->lbaTime = tmpLbaTime;

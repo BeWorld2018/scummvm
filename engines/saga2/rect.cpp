@@ -24,7 +24,6 @@
  *   (c) 1993-1996 The Wyrmkeep Entertainment Co.
  */
 
-#include "common/savefile.h"
 #include "saga2/saga2.h"
 #include "saga2/rect.h"
 
@@ -35,9 +34,23 @@ void Point16::load(Common::SeekableReadStream *stream) {
 	y = stream->readSint16LE();
 }
 
-void Point16::write(Common::OutSaveFile *out) {
+void Point16::write(Common::MemoryWriteStreamDynamic *out) {
 	out->writeSint16LE(x);
 	out->writeSint16LE(y);
+}
+
+void Rect16::read(Common::InSaveFile *in) {
+	x = in->readSint16LE();
+	y = in->readSint16LE();
+	width = in->readSint16LE();
+	height = in->readSint16LE();
+}
+
+void Rect16::write(Common::MemoryWriteStreamDynamic *out) {
+	out->writeSint16LE(x);
+	out->writeSint16LE(y);
+	out->writeSint16LE(width);
+	out->writeSint16LE(height);
 }
 
 Rect16 bound(const Rect16 a, const Rect16 b) {

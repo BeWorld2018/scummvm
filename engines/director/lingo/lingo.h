@@ -70,6 +70,15 @@ struct FuncDesc {
 
 typedef Common::HashMap<void *, FuncDesc *> FuncHash;
 
+struct BuiltinProto {
+	const char *name;
+	void (*func)(int);
+	int minArgs;	// -1 -- arglist
+	int maxArgs;
+	int version;
+	SymbolType type;
+};
+
 struct Symbol {	/* symbol table entry */
 	Common::String *name;
 	SymbolType type;
@@ -84,7 +93,6 @@ struct Symbol {	/* symbol table entry */
 
 	int nargs;		/* number of arguments */
 	int maxArgs;	/* maximal number of arguments, for builtins */
-	bool parens;	/* whether parens required or not, for builitins */
 	int targetType;	/* valid target objects, for method builtins */
 
 	Common::Array<Common::String> *argNames;
@@ -144,7 +152,7 @@ struct Datum {	/* interpreter stack type */
 	const char *type2str(bool isk = false) const;
 
 	int equalTo(Datum &d, bool ignoreCase = false) const;
-	int compareTo(Datum &d, bool ignoreCase = false) const;
+	int compareTo(Datum &d) const;
 };
 
 struct ChunkReference {
@@ -230,7 +238,7 @@ struct LingoArchive {
 	ScriptContext *getScriptContext(ScriptType type, uint16 id);
 	Common::String getName(uint16 id);
 
-	void addCode(const char *code, ScriptType type, uint16 id, const char *scriptName = nullptr);
+	void addCode(const Common::U32String &code, ScriptType type, uint16 id, const char *scriptName = nullptr);
 	void addCodeV4(Common::SeekableReadStreamEndian &stream, uint16 lctxIndex, const Common::String &archName, uint16 version);
 	void addNamesV4(Common::SeekableReadStreamEndian &stream);
 };
@@ -251,6 +259,7 @@ public:
 
 	void reloadBuiltIns();
 	void initBuiltIns();
+	void initBuiltIns(BuiltinProto protos[]);
 	void cleanupBuiltIns();
 	void initFuncs();
 	void cleanupFuncs();
@@ -281,6 +290,7 @@ public:
 	void cleanLocalVars();
 	void varAssign(const Datum &var, const Datum &value);
 	Datum varFetch(const Datum &var, bool silent = false);
+	Common::U32String evalChunkRef(const Datum &var);
 	Datum findVarV4(int varType, const Datum &id);
 	CastMemberID resolveCastMember(const Datum &memberID, const Datum &castLib);
 
@@ -328,7 +338,7 @@ public:
 	const char *field2str(int id);
 
 	// global kTheEntity
-	char _itemDelimiter;
+	Common::u32char_type_t _itemDelimiter;
 
 	Datum getTheEntity(int entity, Datum &id, int field);
 	void setTheEntity(int entity, Datum &id, int field, Datum &d);
@@ -416,6 +426,14 @@ public:
 public:
 	void executeImmediateScripts(Frame *frame);
 	void executePerFrameHook(int frame, int subframe);
+
+	// lingo-utils.cpp
+private:
+	Common::HashMap<uint32, Common::U32String> _charNormalizations;
+	void initCharNormalizations();
+
+public:
+	Common::String normalizeString(const Common::String &str);
 };
 
 extern Lingo *g_lingo;

@@ -76,7 +76,7 @@ struct MetaTileID {
 	int16           index;          //  index into metatile array
 
 	//  Default constructor
-	MetaTileID(void) {}
+	MetaTileID(void) : map(0), index(0) {}
 
 	//  Copy constructor
 	MetaTileID(const MetaTileID &id) : map(id.map), index(id.index) {}
@@ -128,7 +128,7 @@ struct ActiveItemID {
 	//      next 13 bits index
 
 	//  Default constructor
-	ActiveItemID(void) {}
+	ActiveItemID(void) : val(0) {}
 
 	//  Copy constructor
 	ActiveItemID(const ActiveItemID &id) : val(id.val) {
@@ -154,10 +154,6 @@ struct ActiveItemID {
 	ActiveItemID operator = (int16 idVal) {
 		val = idVal;
 		return *this;
-	}
-
-	static int16 getVal(int16 m, int16 i) {
-		return (m << activeItemMapShift) | (i & activeItemIndexMask);
 	}
 
 	bool operator == (const ActiveItemID &id) const {
@@ -257,6 +253,10 @@ const int   kNumViews    = 3;
 
 enum {
 	kMaxWeapons = 256
+};
+
+enum {
+	kActorCount = 575
 };
 
 //
@@ -445,6 +445,22 @@ enum {
 	kTileRectHeight = 428 - 8
 };
 
+//  Horribly kludged hard-coded sprite index numbers for bubble sprites
+enum {
+	kMaxActiveSpells = 8,
+	kBaseBubbleSpriteIndex = 111,
+	kBubbleSpriteCount = 8
+};
+
+enum {
+	kPlayerActors = 3,
+	kMinAutoAggressionVitality = 5,
+	BASE_REC_RATE = 1
+};
+
+enum {
+	kObjectVolumeArraySize = 128
+};
 
 } // end of namespace Saga2
 

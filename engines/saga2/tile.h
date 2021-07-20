@@ -268,6 +268,7 @@ public:
 	}
 
 	TileBank(Common::SeekableReadStream *stream);
+	~TileBank();
 
 	TileInfo *tile(uint16 index) {
 		return &_tileArray[index];
@@ -610,15 +611,10 @@ public:
 	TileActivityTaskList(void);
 
 	//  Reconstruct the TileActivityTaskList from an archive buffer
-	TileActivityTaskList(void **buf);
+	TileActivityTaskList(Common::SeekableReadStream *stream);
 
-	//  Return the number of bytes needed to archive this
-	//  TileActivityTaskList
-	int32 archiveSize(void);
-
-	//  Create an archive of this TileActivityTaskList in the specified
-	//  archive buffer
-	Common::MemorySeekableReadWriteStream *archive(Common::MemorySeekableReadWriteStream *stream);
+	void read(Common::InSaveFile *in);
+	void write(Common::MemoryWriteStreamDynamic *out);
 
 	//  Cleanup this list
 	void cleanup(void);
@@ -769,13 +765,18 @@ struct RipTable {
 	MetaTileID  metaID;
 	uint16      ripID;
 	int16       zTable[kPlatformWidth][kPlatformWidth];
+	int _index;
 
 	enum {
 		kRipTableSize = 25
 	};
 
 	//  Constructor
-	RipTable(void) : metaID(NoMetaTile) {}
+	RipTable(void) : metaID(NoMetaTile), ripID(0), _index(-1) {
+		for (int i = 0; i < kPlatformWidth; i++)
+			for (int j = 0; j < kPlatformWidth; j++)
+				zTable[i][j] = 0;
+	}
 
 	//  Return a pointer to a rip table, given the rip table's ID
 	static RipTable *ripTableAddress(RipTableID id);
@@ -973,9 +974,6 @@ extern StaticTilePoint viewCenter;             // coordinates of view on map
 
 //  These two variables define which sectors overlap the view rect.
 
-extern TilePoint    minSector,
-       maxSector;
-
 extern uint16       rippedRoofID;
 
 /* ===================================================================== *
@@ -996,11 +994,8 @@ void initPlatformCache(void);
 //  Initialize the tile activity task list
 void initTileTasks(void);
 
-//  Save the tile activity task list to a save file
-void saveTileTasks(SaveFileConstructor &saveGame);
-
-//  Load the tile activity task list from a save file
-void loadTileTasks(SaveFileReader &saveGame);
+void saveTileTasks(Common::OutSaveFile *outS);
+void loadTileTasks(Common::InSaveFile *in, int32 chunkSize);
 
 //  Cleanup the tile activity task list
 void cleanupTileTasks(void);
@@ -1008,18 +1003,18 @@ void cleanupTileTasks(void);
 TilePoint getClosestPointOnTAI(ActiveItem *TAI, GameObject *obj);
 
 void initActiveItemStates(void);
-void saveActiveItemStates(SaveFileConstructor &saveGame);
-void loadActiveItemStates(SaveFileReader &saveGame);
+void saveActiveItemStates(Common::OutSaveFile *outS);
+void loadActiveItemStates(Common::InSaveFile *in);
 void cleanupActiveItemStates(void);
 
 void initTileCyclingStates(void);
-void saveTileCyclingStates(SaveFileConstructor &saveGame);
-void loadTileCyclingStates(SaveFileReader &saveGame);
+void saveTileCyclingStates(Common::OutSaveFile *outS);
+void loadTileCyclingStates(Common::InSaveFile *in);
 void cleanupTileCyclingStates(void);
 
 void initAutoMap(void);
-void saveAutoMap(SaveFileConstructor &saveGame);
-void loadAutoMap(SaveFileReader &saveGame);
+void saveAutoMap(Common::OutSaveFile *outS);
+void loadAutoMap(Common::InSaveFile *in, int32 chunkSize);
 inline void cleanupAutoMap(void) { /* nothing to do */ }
 
 //  Determine if a platform is ripped
@@ -1033,6 +1028,7 @@ inline bool platformRipped(Platform *pl) {
 //  Compute visible area in U/V coords
 TilePoint XYToUV(const Point32 &pt);
 void TileToScreenCoords(const TilePoint &tp, Point16 &p);
+void TileToScreenCoords(const TilePoint &tp, StaticPoint16 &p);
 
 //  Determine height of point on a tile based on four corner heights
 int16 ptHeight(const TilePoint &tp, uint8 *cornerHeight);

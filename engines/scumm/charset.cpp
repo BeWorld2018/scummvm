@@ -1517,6 +1517,7 @@ CharsetRendererMac::CharsetRendererMac(ScummEngine *vm, const Common::String &fo
 	 : CharsetRendererCommon(vm) {
 
 	_pad = false;
+	_glyphSurface = NULL;
 
 	// Indy 3 provides an "Indy" font in two sizes, 9 and 12, which are
 	// used for the text boxes. The smaller font can be used for a
@@ -1541,40 +1542,64 @@ CharsetRendererMac::CharsetRendererMac(ScummEngine *vm, const Common::String &fo
 	// 60 is an upside-down note, i.e. the one used for c'.
 	// 95 is a used for the rest of the notes.
 
-	if (_vm->_game.id == GID_INDY3 || _vm->_game.id == GID_LOOM) {
-		Common::MacResManager resource;
-		resource.open(fontFile);
+	Common::MacResManager resource;
+	resource.open(fontFile);
 
-		Common::String fontFamilyName = (_vm->_game.id == GID_LOOM) ? "Loom" : "Indy";
+	Common::String fontFamilyName = (_vm->_game.id == GID_LOOM) ? "Loom" : "Indy";
 
-		Common::SeekableReadStream *fond = resource.getResource(MKTAG('F', 'O', 'N', 'D'), fontFamilyName);
-		Graphics::MacFontFamily fontFamily;
+	Common::SeekableReadStream *fond = resource.getResource(MKTAG('F', 'O', 'N', 'D'), fontFamilyName);
 
-		if (fond) {
-			if (fontFamily.load(*fond)) {
-				Common::Array<Graphics::MacFontFamily::AsscEntry> *assoc = fontFamily.getAssocTable();
-				for (uint i = 0; i < assoc->size(); i++) {
-					int fontId = -1;
-					int fontSize = (*assoc)[i]._fontSize;
+	if (!fond)
+		return;
 
-					if (_vm->_game.id == GID_INDY3) {
-						if (fontSize == 9)
-							fontId = 1;
-						else if (fontSize == 12)
-							fontId = 0;
-					} else {
-						if (fontSize == 13)
-							fontId = 0;
-					}
-					if (fontId != -1) {
-						Common::SeekableReadStream *font = resource.getResource(MKTAG('F', 'O', 'N', 'T'), (*assoc)[i]._fontID);
-						_macFonts[fontId].loadFont(*font, &fontFamily, fontSize, 0);
-						delete font;
-					}
-				}
-			}
-			delete fond;
+	Graphics::MacFontFamily fontFamily;
+	if (!fontFamily.load(*fond)) {
+		delete fond;
+		return;
+	}
+
+	Common::Array<Graphics::MacFontFamily::AsscEntry> *assoc = fontFamily.getAssocTable();
+	for (uint i = 0; i < assoc->size(); i++) {
+		int fontId = -1;
+		int fontSize = (*assoc)[i]._fontSize;
+
+		if (_vm->_game.id == GID_INDY3) {
+			if (fontSize == 9)
+				fontId = 1;
+			else if (fontSize == 12)
+				fontId = 0;
+		} else {
+			if (fontSize == 13)
+				fontId = 0;
 		}
+		if (fontId != -1) {
+			Common::SeekableReadStream *font = resource.getResource(MKTAG('F', 'O', 'N', 'T'), (*assoc)[i]._fontID);
+			_macFonts[fontId].loadFont(*font, &fontFamily, fontSize, 0);
+			delete font;
+		}
+	}
+
+	delete fond;
+
+	if (_vm->_renderMode == Common::kRenderMacintoshBW) {
+		int numFonts = (_vm->_game.id == GID_INDY3) ? 2 : 1;
+		int maxHeight = -1;
+		int maxWidth = -1;
+
+		for (int i = 0; i < numFonts; i++) {
+			maxHeight = MAX(maxHeight, _macFonts[i].getFontHeight());
+			maxWidth = MAX(maxWidth, _macFonts[i].getMaxCharWidth());
+		}
+
+		_glyphSurface = new Graphics::Surface();
+		_glyphSurface->create(maxWidth, maxHeight, Graphics::PixelFormat::createFormatCLUT8());
+	}
+}
+
+CharsetRendererMac::~CharsetRendererMac() {
+	if (_glyphSurface) {
+		_glyphSurface->free();
+		delete _glyphSurface;
 	}
 }
 
@@ -1638,6 +1663,10 @@ int CharsetRendererMac::getCharWidth(uint16 chr) {
 }
 
 void CharsetRendererMac::printChar(int chr, bool ignoreCharsetMask) {
+	// This function does most of the heavy lifting printing the game
+	// text. It's the only function that needs to be able to handle
+	// disabled text.
+
 	// If this is the beginning of a line, assume the position will be
 	// correct without any padding.
 
@@ -1776,8 +1805,32 @@ void CharsetRendererMac::printChar(int chr, bool ignoreCharsetMask) {
 	_lastTop = _top;
 }
 
+byte CharsetRendererMac::getTextColor() {
+	if (_vm->_renderMode == Common::kRenderMacintoshBW) {
+		// White and black can be rendered as is, and 8 is the color
+		// used for disabled text (verbs in Indy 3, notes in Loom).
+		// Everything else should be white.
+
+		if (_color == 0 || _color == 15 || _color == 8)
+			return _color;
+		return 15;
+	}
+	return _color;
+}
+
+byte CharsetRendererMac::getTextShadowColor() {
+	if (_vm->_renderMode == Common::kRenderMacintoshBW) {
+		if (getTextColor() == 0)
+			return 15;
+		return 0;
+	}
+	return _shadowColor;
+}
+
 void CharsetRendererMac::printCharInternal(int chr, int color, bool shadow, int x, int y) {
 	if (shadow) {
+		byte shadowColor = getTextShadowColor();
+
 		if (_vm->_game.id == GID_LOOM) {
 			// Shadowing is a bit of guesswork. It doesn't look
 			// like it's using the Mac's built-in form of shadowed
@@ -1790,31 +1843,74 @@ void CharsetRendererMac::printCharInternal(int chr, int color, bool shadow, int 
 			_macFonts[_curId].drawChar(&_vm->_textSurface, chr, x + 3, y + 3, 0);
 
 			if (color != -1) {
-				_macFonts[_curId].drawChar(_vm->_macScreen, chr, x + 2, y, _shadowColor);
-				_macFonts[_curId].drawChar(_vm->_macScreen, chr, x, y + 2, _shadowColor);
-				_macFonts[_curId].drawChar(_vm->_macScreen, chr, x + 3, y + 3, _shadowColor);
+				_macFonts[_curId].drawChar(_vm->_macScreen, chr, x + 2, y, shadowColor);
+				_macFonts[_curId].drawChar(_vm->_macScreen, chr, x, y + 2, shadowColor);
+				_macFonts[_curId].drawChar(_vm->_macScreen, chr, x + 3, y + 3, shadowColor);
 			}
 		} else {
 			// Indy 3 uses simpler shadowing, and doesn't need the
 			// "draw only on text surface" hack.
 
 			_macFonts[_curId].drawChar(&_vm->_textSurface, chr, x + 2, y + 2, 0);
-			_macFonts[_curId].drawChar(_vm->_macScreen, chr, x + 2, y + 2, _shadowColor);
+			_macFonts[_curId].drawChar(_vm->_macScreen, chr, x + 2, y + 2, shadowColor);
 		}			
 	}
 
 	_macFonts[_curId].drawChar(&_vm->_textSurface, chr, x + 1, y + 1, 0);
 
-	if (color != -1)
-		_macFonts[_curId].drawChar(_vm->_macScreen, chr, x + 1, y + 1, color);
+	if (color != -1) {
+		color = getTextColor();
+
+		if (_vm->_renderMode == Common::kRenderMacintoshBW && color != 0 && color != 15) {
+			_glyphSurface->fillRect(Common::Rect(_glyphSurface->w, _glyphSurface->h), 0);
+			_macFonts[_curId].drawChar(_glyphSurface, chr, 0, 0, 15);
+
+			byte *src = (byte *)_glyphSurface->getBasePtr(0, 0);
+			byte *dst = (byte *)_vm->_macScreen->getBasePtr(x + 1, y + 1);
+
+			for (int h = 0; h < _glyphSurface->h; h++) {
+				bool pixel = ((y + h + 1) & 1) == 0;
+
+				for (int w = 0; w < _glyphSurface->w; w++) {
+					if (src[w]) {
+						if (pixel)
+							dst[w] = 15;
+						else
+							dst[w] = 0;
+					}
+					pixel = !pixel;
+				}
+				src += _glyphSurface->pitch;
+				dst += _vm->_macScreen->pitch;
+			}
+		} else {
+			_macFonts[_curId].drawChar(_vm->_macScreen, chr, x + 1, y + 1, color);
+		}
+	}
 }
 
 void CharsetRendererMac::printCharToTextBox(int chr, int color, int x, int y) {
-	_macFonts[_curId].drawChar(_vm->_macIndy3TextBox, chr, x + 5, y + 11, _color);
+	// This function handles printing most of the text in the text boxes
+	// in Indiana Jones and the last crusade. In black and white mode, all
+	// text is white. Text is never disabled.
+
+	if (_vm->_renderMode == Common::kRenderMacintoshBW)
+		color = 15;
+
+	_macFonts[_curId].drawChar(_vm->_macIndy3TextBox, chr, x + 5, y + 11, color);
 }
 
 void CharsetRendererMac::drawChar(int chr, Graphics::Surface &s, int x, int y) {
-	_macFonts[_curId].drawChar(&s, chr, x, y, _color);
+	// This function is used for drawing most of the text outside of what
+	// the game scripts request. It's used for the text box captions in
+	// Indiana Jones and the Last Crusade, and for the practice mode box
+	// in Loom.
+	int color = _color;
+
+	if (_vm->_renderMode == Common::kRenderMacintoshBW)
+		color = 15;
+
+	_macFonts[_curId].drawChar(&s, chr, x, y, color);
 }
 
 void CharsetRendererMac::setColor(byte color) {

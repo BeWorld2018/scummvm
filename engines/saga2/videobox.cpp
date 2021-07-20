@@ -50,6 +50,9 @@ CVideoBox::CVideoBox(const Rect16 &box,
 
 	// null out the decRes pointer
 	decRes = NULL;
+
+	rInfo.result = -1;
+	rInfo.running = false;
 }
 
 CVideoBox::~CVideoBox(void) {
@@ -112,9 +115,9 @@ void CVideoBox::drawClipped(
     gPort         &port,
     const Point16 &offset,
     const Rect16  &clipRect) {
-	pointer.hide();
+	g_vm->_pointer->hide();
 	ModalWindow::drawClipped(port, offset, clipRect);
-	pointer.show();
+	g_vm->_pointer->show();
 }
 
 void CVideoBox::draw(void) {         // redraw the window

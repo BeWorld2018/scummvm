@@ -51,6 +51,9 @@ GrabInfo::GrabInfo() {
 
 	textBuf[0] = '\0';
 	displayGauge = false;
+
+	gaugeNumerator = gaugeDenominator = 0;
+	moveCount = 1;
 }
 
 GrabInfo::~GrabInfo() {
@@ -155,9 +158,9 @@ uint8 GrabInfo::setIntent(uint8 in) {
 	//  If intention isn't being changed, return immediately
 	if (intention != (Intent)in) {
 		//  Intention has changed to None
-		if (in == (uint8)None && intention != None) pointer.hide();
+		if (in == (uint8)None && intention != None) g_vm->_pointer->hide();
 		//  Intention has changed from None
-		else if (in != (uint8)None && intention == None) pointer.show();
+		else if (in != (uint8)None && intention == None) g_vm->_pointer->show();
 
 		intention = (Intent)in;
 		//  Set new cursor

@@ -24,8 +24,6 @@
  *   (c) 1993-1996 The Wyrmkeep Entertainment Co.
  */
 
-#define FORBIDDEN_SYMBOL_ALLOW_ALL // FIXME: Remove
-
 #include "common/debug.h"
 #include "graphics/surface.h"
 
@@ -42,7 +40,6 @@
 #include "saga2/tagnoise.h"
 #include "saga2/player.h"
 #include "saga2/mapfeatr.h"
-#include "saga2/savefile.h"
 
 //  Include files needed for SAGA script dispatch
 #include "saga2/script.h"
@@ -82,7 +79,7 @@ const int           slowScrollSpeed = 6,
 const StaticTilePoint Nowhere = {(int16)minint16, (int16)minint16, (int16)minint16};
 
 const StaticMetaTileID NoMetaTile = {nullID, nullID};
-const StaticActiveItemID  NoActiveItem = {ActiveItemID::getVal(0, activeItemIndexNullID)};
+const StaticActiveItemID  NoActiveItem = {activeItemIndexNullID};
 
 enum SurfaceType {
 	surfaceHoriz,               //  Level surface
@@ -99,7 +96,6 @@ void setAreaSound(const TilePoint &baseCoords);
  * ===================================================================== */
 
 TileBankPtr tileBanks[maxBanks];
-extern HandleArray tileImageBanks;
 
 void updateHandleRefs(const TilePoint &pt);  //, StandingTileInfo *stiResult )
 void updateFrameCount(void);
@@ -160,19 +156,9 @@ void drawFloatingWindows(gPort &, const Point16 &, const Rect16 &clip);
    Imports
  * ===================================================================== */
 
-extern gMousePointer pointer;                   // the actual pointer
-extern gMouseState  mouseState;
-extern gPort        backPort;
-
 extern int16        worldCount;     //  Used as map count as well
 
 extern ObjectID     viewCenterObject;       // ID of object that view tracks
-
-/* ===================================================================== *
-   Exports
- * ===================================================================== */
-
-gPixelMap           tileDrawMap;
 
 /* ===================================================================== *
    Tile structure management
@@ -210,23 +196,15 @@ StaticTilePoint viewCenter = {0, 0, 0};             // coordinates of view on ma
 
 //  These two variables define which sectors overlap the view rect.
 
-TilePoint           minSector,
-                    maxSector;
-
 int16               currentMapNum;          // which map is in use
 int16               lastMapNum;
 
 int32               lastUpdateTime;         // time of last display update
 
-gPort               mouseSavePort;          // for tweaking mouse backsave
-
-
 /* also:
     -- height of center character
     -- what map we are on.
  */
-
-BankBits LoadedBanks;                // what banks are loaded?
 
 /* ===================================================================== *
    ActiveItemID member functions
@@ -291,7 +269,7 @@ TileInfo *TileInfo::tileAddress(TileID id, uint8 **imageData) {
 	}
 
 	if (ti != nullptr) {
-		if ((tibh = tileImageBanks[tileBank]) != nullptr)
+		if ((tibh = (*g_vm->_tileImageBanks)[tileBank]) != nullptr)
 			*imageData = &tibh[ti->offset];
 		else
 			*imageData = nullptr;
@@ -781,59 +759,35 @@ void initActiveItemStates(void) {
 	}
 }
 
-//-----------------------------------------------------------------------
-//	Save the active item instance states in a save file
+void saveActiveItemStates(Common::OutSaveFile *outS) {
+	debugC(2, kDebugSaveload, "Saving ActiveItemStates");
 
-void saveActiveItemStates(SaveFileConstructor &saveGame) {
-	int16   i;
+	outS->write("TAGS", 4);
+	CHUNK_BEGIN;
+	for (int i = 0; i < worldCount; i++) {
+		debugC(3, kDebugSaveload, "Saving ActiveItemState %d", i);
 
-	int32   archiveBufSize = 0;
-	void    *archiveBuffer;
-	void    *bufferPtr;
-
-	for (i = 0; i < worldCount; i++) {
-		int32 size = tileRes->size(tagStateID + i);
-		archiveBufSize += sizeof(int16);
-		if (stateArray[i] != nullptr)
-			archiveBufSize += size;
-	}
-
-	archiveBuffer = malloc(archiveBufSize);
-	if (archiveBuffer == nullptr)
-		error("Unable to allocate a state array archive buffer");
-
-	bufferPtr = archiveBuffer;
-
-	for (i = 0; i < worldCount; i++) {
 		if (stateArray[i] != nullptr) {
-			WorldMapData        *mapData = &mapList[i];
-			ActiveItemList      *activeItemList = mapData->activeItemList;
-			int16               activeItemCount = mapData->activeCount,
-			                    j;
-			int32               arraySize = tileRes->size(tagStateID + i);
-			uint8               *bufferedStateArray;
+			WorldMapData *mapData = &mapList[i];
+			ActiveItemList *activeItemList = mapData->activeItemList;
+			int16 activeItemCount = mapData->activeCount;
+			int32 arraySize = tileRes->size(tagStateID + i);
 
 			//  Save the size of the state array
-			WRITE_LE_INT16(bufferPtr, arraySize / sizeof(uint8));
-			bufferPtr = (int16 *)bufferPtr + 1;
+			out->writeSint16LE(arraySize);
 
-			//  Copy the state data to the archive buffer
-			memcpy(bufferPtr, stateArray[i], arraySize);
-			//  Save a pointer to the buffered data
-			bufferedStateArray = (uint8 *)bufferPtr;
-			bufferPtr = (uint8 *)bufferPtr + arraySize;
+			debugC(4, kDebugSaveload, "... arraySize = %d", arraySize);
 
-			for (j = 0; j < activeItemCount; j++) {
-				ActiveItem      *activeItem = activeItemList->_items[j];
-				uint8           *statePtr;
+			for (int j = 0; j < activeItemCount; j++) {
+				ActiveItem *activeItem = activeItemList->_items[j];
+				uint8 *statePtr;
 
 				if (activeItem->_data.itemType != activeTypeInstance)
 					continue;
 
 				//  Get a pointer to the current active item's state
 				//  data in the archive buffer
-				statePtr =
-				    &bufferedStateArray[activeItem->_data.instance.stateIndex];
+				statePtr = &stateArray[i][activeItem->_data.instance.stateIndex];
 
 				//  Set the high bit of the state value based upon the
 				//  active item's locked state
@@ -842,57 +796,41 @@ void saveActiveItemStates(SaveFileConstructor &saveGame) {
 				else
 					*statePtr &= ~(1 << 7);
 			}
-		} else {
-			WRITE_LE_INT16(bufferPtr, 0);
-			bufferPtr = (int16 *)bufferPtr + 1;
-		}
+
+			//  Copy the state data to the archive buffer
+			out->write(stateArray[i], arraySize);
+		} else
+			out->writeSint16LE(0);
 	}
-
-	saveGame.writeChunk(
-	    MakeID('T', 'A', 'G', 'S'),
-	    archiveBuffer,
-	    archiveBufSize);
-
-	free(archiveBuffer);
+	CHUNK_END;
 }
 
-//-----------------------------------------------------------------------
-//	Load the active item instance states from a save file
-
-void loadActiveItemStates(SaveFileReader &saveGame) {
-	int16       i;
-
-	void        *archiveBuffer;
-	void        *bufferPtr;
+void loadActiveItemStates(Common::InSaveFile *in) {
+	debugC(2, kDebugSaveload, "Loading ActiveItemStates");
 
 	stateArray = new byte *[worldCount]();
 
 	if (stateArray == nullptr)
 		error("Unable to allocate the active item state array array");
 
-	archiveBuffer = malloc(saveGame.getChunkSize());
+	for (int i = 0; i < worldCount; i++) {
+		debugC(3, kDebugSaveload, "Loading ActiveItemState %d", i);
 
-	if (archiveBuffer == nullptr)
-		error("Unable to allocate state array archive buffer");
+		int32 arraySize;
 
-	saveGame.read(archiveBuffer, saveGame.getChunkSize());
+		arraySize = in->readSint16LE();
 
-	bufferPtr = archiveBuffer;
+		debugC(4, kDebugSaveload, "... arraySize = %d", arraySize);
 
-	for (i = 0; i < worldCount; i++) {
-		int32   arraySize;
-
-		arraySize = READ_LE_INT16(bufferPtr) * sizeof(uint8);
-		bufferPtr = (int16 *)bufferPtr + 1;
+		stateArray[i] = (byte *)malloc(arraySize);
+		in->read(stateArray[i], arraySize);
 
 		if (arraySize > 0) {
-			WorldMapData        *mapData = &mapList[i];
-			ActiveItemList      *activeItemList = mapData->activeItemList;
-			int16               activeItemCount = mapData->activeCount,
-			                    j;
-			uint8               *bufferedStateArray = (uint8 *)bufferPtr;
+			WorldMapData *mapData = &mapList[i];
+			ActiveItemList *activeItemList = mapData->activeItemList;
+			int16 activeItemCount = mapData->activeCount;
 
-			for (j = 0; j < activeItemCount; j++) {
+			for (int j = 0; j < activeItemCount; j++) {
 				ActiveItem      *activeItem = activeItemList->_items[j];
 				uint8           *statePtr;
 
@@ -901,8 +839,7 @@ void loadActiveItemStates(SaveFileReader &saveGame) {
 
 				//  Get a pointer to the current active item's state
 				//  data in the archive buffer
-				statePtr =
-				    &bufferedStateArray[activeItem->_data.instance.stateIndex];
+				statePtr = &stateArray[i][activeItem->_data.instance.stateIndex];
 
 				//  Reset the locked state of the active item based
 				//  upon the high bit of the buffered state value
@@ -911,18 +848,9 @@ void loadActiveItemStates(SaveFileReader &saveGame) {
 				//  Clear the high bit of the state value
 				*statePtr &= ~(1 << 7);
 			}
-
-			stateArray[i] = (byte *)malloc(arraySize);
-			if (stateArray[i] == nullptr)
-				error("Unable to allocate active item state array");
-
-			memcpy(stateArray[i], bufferPtr, arraySize);
-			bufferPtr = (uint8 *)bufferPtr + arraySize;
 		} else
 			stateArray[i] = nullptr;
 	}
-
-	free(archiveBuffer);
 }
 
 //-----------------------------------------------------------------------
@@ -944,11 +872,6 @@ void cleanupActiveItemStates(void) {
  * ===================================================================== */
 
 //-----------------------------------------------------------------------
-//	The list of active tile activity tasks
-
-static TileActivityTaskList aTaskList;
-
-//-----------------------------------------------------------------------
 //	Constructor
 
 TileActivityTaskList::TileActivityTaskList(void) {
@@ -957,78 +880,60 @@ TileActivityTaskList::TileActivityTaskList(void) {
 //-----------------------------------------------------------------------
 //	Reconstruct the TileActivityTaskList from an archive buffer
 
-TileActivityTaskList::TileActivityTaskList(void **buf) {
-	warning("STUB: TileActivityTaskList::TileActivityTaskList(void **buf)");
-#if 0
-	void        *bufferPtr = *buf;
-
-	int16       taskCount;
-
-	for (uint i = 0; i < ARRAYSIZE(array); i++) {
-		free.addTail(array[i]);
-	}
-
-	//  Retreive the task count
-	taskCount = READ_LE_INT16(bufferPtr);
-	bufferPtr = (int16 *)bufferPtr + 1;
-
-	for (int i = 0; i < taskCount; i++) {
-		ActiveItem  *tai;
-		uint8       activityType;
-
-		tai = ActiveItem::activeItemAddress(*((ActiveItemID *)bufferPtr));
-		bufferPtr = (ActiveItemID *)bufferPtr + 1;
-
-		activityType = *((uint8 *)bufferPtr);
-		bufferPtr = (uint8 *)bufferPtr + 1;
-
-		if (tai != nullptr) {
-			TileActivityTask    *tat;
-
-			tat = newTask(tai);
-			if (tat != nullptr)
-				tat->activityType = activityType;
-		}
-	}
-
-	*buf = bufferPtr;
-#endif
+TileActivityTaskList::TileActivityTaskList(Common::SeekableReadStream *stream) {
+	read(stream);
 }
 
 //-----------------------------------------------------------------------
 //	Return the number of bytes needed to archive this
 //	TileActivityTaskList
 
-int32 TileActivityTaskList::archiveSize(void) {
-	int32 size = sizeof(int16);
+void TileActivityTaskList::read(Common::InSaveFile *in) {
+	int16 taskCount;
 
-	for (Common::List<TileActivityTask *>::iterator it = _list.begin(); it != _list.end(); ++it)
-		size += sizeof(ActiveItemID) + sizeof(uint8);
+	//  Retreive the task count
+	taskCount = in->readSint16LE();
+	debugC(3, kDebugSaveload, "... taskCount = %d", taskCount);
 
-	return size;
+	for (int i = 0; i < taskCount; i++) {
+		ActiveItem  *tai;
+		uint8       activityType;
+
+		int16 val = in->readSint16LE();
+		tai = ActiveItem::activeItemAddress(ActiveItemID(val));
+		debugC(4, kDebugSaveload, "...... activeItemID = %d", val);
+
+		activityType = in->readByte();
+		debugC(4, kDebugSaveload, "...... activityType = %d", activityType);
+
+		if (tai != nullptr) {
+			TileActivityTask *tat;
+
+			tat = newTask(tai);
+			if (tat != nullptr)
+				tat->activityType = activityType;
+		}
+	}
 }
 
-//-----------------------------------------------------------------------
-//	Create an archive of this TileActivityTaskList in the specified
-//	archive buffer
-
-Common::MemorySeekableReadWriteStream *TileActivityTaskList::archive(Common::MemorySeekableReadWriteStream *stream) {
+void TileActivityTaskList::write(Common::MemoryWriteStreamDynamic *out) {
 	int16 taskCount = _list.size();
 
 	//  Store the task count
-	stream->writeSint16LE(taskCount);
+	out->writeSint16LE(taskCount);
+	debugC(3, kDebugSaveload, "... taskCount = %d", taskCount);
 
 	for (Common::List<TileActivityTask *>::iterator it = _list.begin(); it != _list.end(); ++it) {
 		ActiveItem  *ai = (*it)->tai;
 
 		//  Store the activeItemID
-		stream->writeSint16LE(ai->thisID());
+		out->writeSint16LE(ai->thisID().val);
+		debugC(4, kDebugSaveload, "...... activeItemID = %d", ai->thisID().val);
 
 		//  Store the task type
-		stream->writeByte((*it)->activityType);
+		out->writeByte((*it)->activityType);
+		debugC(4, kDebugSaveload, "...... activityType = %d", (*it)->activityType);
 	}
-
-	return stream;
 }
 
 //-----------------------------------------------------------------------
@@ -1093,7 +998,7 @@ TileActivityTask *TileActivityTaskList::newTask(ActiveItem *activeInstance) {
 void TileActivityTask::remove(void) {
 	debugC(3, kDebugTasks, "Removing TAT");
 
-	aTaskList._list.remove(this);
+	g_vm->_aTaskList->_list.remove(this);
 }
 
 //-----------------------------------------------------------------------
@@ -1103,7 +1008,7 @@ void TileActivityTask::openDoor(ActiveItem &activeInstance) {
 	debugC(3, kDebugTasks, "TAT Open Door");
 
 	TileActivityTask *tat;
-	if ((tat = aTaskList.newTask(&activeInstance)) != nullptr)
+	if ((tat = g_vm->_aTaskList->newTask(&activeInstance)) != nullptr)
 		tat->activityType = activityTypeOpen;
 }
 
@@ -1114,7 +1019,7 @@ void TileActivityTask::closeDoor(ActiveItem &activeInstance) {
 	debugC(3, kDebugTasks, "TAT Close Door");
 
 	TileActivityTask *tat;
-	if ((tat = aTaskList.newTask(&activeInstance)) != nullptr)
+	if ((tat = g_vm->_aTaskList->newTask(&activeInstance)) != nullptr)
 		tat->activityType = activityTypeClose;
 }
 
@@ -1125,7 +1030,7 @@ void TileActivityTask::doScript(ActiveItem &activeInstance, uint8 finalState, Th
 	debugC(3, kDebugTasks, "TAT Do Script");
 
 	TileActivityTask *tat;
-	if ((tat = aTaskList.newTask(&activeInstance)) != nullptr) {
+	if ((tat = g_vm->_aTaskList->newTask(&activeInstance)) != nullptr) {
 		if (scr)
 			debugC(3, kDebugTasks, "TAT Assign Script!");
 
@@ -1145,7 +1050,7 @@ void TileActivityTask::doScript(ActiveItem &activeInstance, uint8 finalState, Th
 void TileActivityTask::updateActiveItems(void) {
 	int count = 0, scriptCount = 0;
 
-	for (Common::List<TileActivityTask *>::iterator it = aTaskList._list.begin(); it != aTaskList._list.end();) {
+	for (Common::List<TileActivityTask *>::iterator it = g_vm->_aTaskList->_list.begin(); it != g_vm->_aTaskList->_list.end();) {
 		TileActivityTask *tat = *it;
 		ActiveItem *activityInstance = tat->tai;
 		bool activityTaskDone = false;
@@ -1208,7 +1113,7 @@ void TileActivityTask::updateActiveItems(void) {
 //	Search for tile activity task matching an item
 
 TileActivityTask *TileActivityTask::find(ActiveItem *tai) {
-	for (Common::List<TileActivityTask *>::iterator it = aTaskList._list.begin(); it != aTaskList._list.end(); ++it) {
+	for (Common::List<TileActivityTask *>::iterator it = g_vm->_aTaskList->_list.begin(); it != g_vm->_aTaskList->_list.end(); ++it) {
 		if (tai == (*it)->tai)
 			return *it;
 	}
@@ -1253,60 +1158,24 @@ void moveActiveTerrain(int32 deltaTime) {
 void initTileTasks(void) {
 }
 
-//-----------------------------------------------------------------------
-//	Save the tile activity task list to a save file
+void saveTileTasks(Common::OutSaveFile *outS) {
+	debugC(2, kDebugSaveload, "Saving TileActivityTasks");
 
-void saveTileTasks(SaveFileConstructor &saveGame) {
-	int32   archiveBufSize;
-	byte *archiveBuffer;
-	Common::MemorySeekableReadWriteStream *stream;
-
-	archiveBufSize = aTaskList.archiveSize();
-
-	archiveBuffer = (byte *)malloc(archiveBufSize);
-	if (archiveBuffer == nullptr)
-		error("Unable to allocate tile activity task archive buffer");
-
-	stream = new Common::MemorySeekableReadWriteStream(archiveBuffer,
-	                                                   archiveBufSize,
-	                                                   DisposeAfterUse::YES);
-
-	aTaskList.archive(stream);
-
-	saveGame.writeChunk(
-	    MakeID('T', 'A', 'C', 'T'),
-	    archiveBuffer,
-	    archiveBufSize);
-
-	delete stream;
+	outS->write("TACT", 4);
+	CHUNK_BEGIN;
+	g_vm->_aTaskList->write(out);
+	CHUNK_END;
 }
 
-//-----------------------------------------------------------------------
-//	Load the tile activity task list from a save file
+void loadTileTasks(Common::InSaveFile *in, int32 chunkSize) {
+	debugC(2, kDebugSaveload, "Loading TileActivityTasks");
 
-void loadTileTasks(SaveFileReader &saveGame) {
 	//  If there is no saved data, simply call the default constructor
-	if (saveGame.getChunkSize() == 0) {
-		new (&aTaskList) TileActivityTaskList;
+	if (chunkSize == 0)
 		return;
-	}
-
-	void    *archiveBuffer;
-	void    *bufferPtr;
-
-	archiveBuffer = malloc(saveGame.getChunkSize());
-	if (archiveBuffer == nullptr)
-		error("Unable to allocate tile activity task archive buffer");
-
-	//  Read the archived tile activity task data
-	saveGame.read(archiveBuffer, saveGame.getChunkSize());
-
-	bufferPtr = archiveBuffer;
 
 	//  Reconstruct aTaskList from archived data
-	new (&aTaskList) TileActivityTaskList(&bufferPtr);
-
-	free(archiveBuffer);
+	g_vm->_aTaskList->read(in);
 }
 
 
@@ -1315,7 +1184,7 @@ void loadTileTasks(SaveFileReader &saveGame) {
 
 void cleanupTileTasks(void) {
 	//  Simply call the aTaskList's cleanup
-	aTaskList.cleanup();
+	g_vm->_aTaskList->cleanup();
 }
 
 /* ===================================================================== *
@@ -1345,6 +1214,10 @@ TileBank::TileBank(Common::SeekableReadStream *stream) {
 		att->tileFlags = stream->readByte();
 		att->reserved1 = stream->readUint16LE();
 	}
+}
+
+TileBank::~TileBank() {
+	delete[] _tileArray;
 }
 
 MapHeader::MapHeader(Common::SeekableReadStream *stream) {
@@ -1569,6 +1442,7 @@ void initMaps(void) {
 		ripTableList[k].metaID = NoMetaTile;
 		ripTableList[k].ripID = 0;
 		memset(ripTableList[k].zTable, 0, sizeof(ripTableList[k].zTable));
+		ripTableList[k]._index = k;
 	}
 
 	initPlatformCache();
@@ -1671,17 +1545,16 @@ void initAutoMap(void) {
 
 }
 
-//-----------------------------------------------------------------------
+void saveAutoMap(Common::OutSaveFile *outS) {
+	debugC(2, kDebugSaveload, "Saving AutoMap");
 
-void saveAutoMap(SaveFileConstructor &saveGame) {
-	int32       totalMapSize = 0,
-	            totalMapIndex = 0;
-	int16       i;
+	int32 totalMapSize = 0,
+	      totalMapIndex = 0;
 
-	uint8       *archiveBuffer;
-	int32       archiveBufSize;
+	uint8 *archiveBuffer;
+	int32 archiveBufSize;
 
-	for (i = 0; i < worldCount; i++) {
+	for (int i = 0; i < worldCount; i++) {
 		MapHeader       *map;
 		int32           mapSize;
 
@@ -1696,15 +1569,18 @@ void saveAutoMap(SaveFileConstructor &saveGame) {
 	//  for each map metatile slot
 	archiveBufSize = (totalMapSize + 7) >> 3;
 
-	archiveBuffer = (uint8 *)malloc(archiveBufSize);
+	outS->write("AMAP", 4);
+
+	archiveBuffer = (uint8 *)calloc(archiveBufSize, 1);
 	if (archiveBuffer == nullptr)
 		error("Unable to allocate auto map archive buffer");
 
-	for (i = 0; i < worldCount; i++) {
-		MapHeader       *map;
-		int32           mapSize,
-		                mapIndex;
-		uint16          *mapData;
+	for (int i = 0; i < worldCount; i++) {
+		MapHeader *map;
+		int32 mapSize,
+		      mapIndex;
+
+		uint16 *mapData;
 
 		map = mapList[i].map;
 		mapSize = map->size;
@@ -1726,36 +1602,32 @@ void saveAutoMap(SaveFileConstructor &saveGame) {
 		}
 	}
 
-	saveGame.writeChunk(
-	    MakeID('A', 'M', 'A', 'P'),
-	    archiveBuffer,
-	    archiveBufSize);
+	CHUNK_BEGIN;
+	out->write(archiveBuffer, archiveBufSize);
+	CHUNK_END;
 
 	free(archiveBuffer);
 }
 
-//-----------------------------------------------------------------------
-
-void loadAutoMap(SaveFileReader &saveGame) {
+void loadAutoMap(Common::InSaveFile *in, int32 chunkSize) {
 	int32       totalMapIndex = 0;
-	int16       i;
-
 	uint8       *archiveBuffer;
 	int32       archiveBufSize;
 
-	archiveBufSize = saveGame.getChunkSize();
+	archiveBufSize = chunkSize;
 
 	archiveBuffer = (uint8 *)malloc(archiveBufSize);
 	if (archiveBuffer == nullptr)
 		error("Unable to allocate auto map archive buffer");
 
-	saveGame.read(archiveBuffer, archiveBufSize);
+	in->read(archiveBuffer, archiveBufSize);
 
-	for (i = 0; i < worldCount; i++) {
-		MapHeader       *map;
-		int32           mapSize,
-		                mapIndex;
-		uint16          *mapData;
+	for (int i = 0; i < worldCount; i++) {
+		MapHeader *map;
+		int32 mapSize,
+		      mapIndex;
+
+		uint16 *mapData;
 
 		map = mapList[i].map;
 		mapSize = map->size;
@@ -1821,6 +1693,14 @@ TilePoint XYToUV(const Point32 &pt) {
  * ===================================================================== */
 
 void TileToScreenCoords(const TilePoint &tp, Point16 &p) {
+	int32       mapHeight = mapList[currentMapNum].mapHeight;
+
+	//  screen coords of the point
+	p.x = (((int32)tp.u - (int32)tp.v) << 1) - tileScroll.x + mapHeight;
+	p.y = mapHeight - tileScroll.y - ((int32)tp.u + (int32)tp.v) - tp.z;
+}
+
+void TileToScreenCoords(const TilePoint &tp, StaticPoint16 &p) {
 	int32       mapHeight = mapList[currentMapNum].mapHeight;
 
 	//  screen coords of the point
@@ -2207,8 +2087,7 @@ RipTable *RipTable::ripTableAddress(RipTableID id) {
 //	Return a rip table's ID
 
 RipTableID RipTable::thisID(void) {
-	warning("RipTable::thisID(): Unsafe pointer arithmetics");
-	return this - ripTableList;
+	return _index;
 }
 
 /* ====================================================================== *
@@ -2621,7 +2500,7 @@ inline void drawMetaRow(TilePoint coords, Point16 pos) {
 	int16           layerLimit;
 
 	for (;
-	        pos.x < tileDrawMap.size.x + kMetaDX;
+	        pos.x < g_vm->_tileDrawMap.size.x + kMetaDX;
 	        coords.u++,
 	        coords.v--,
 	        uOrg += kPlatformWidth,
@@ -2688,7 +2567,7 @@ inline void drawMetaRow(TilePoint coords, Point16 pos) {
 				p->highestPixel = kTileHeight * (kPlatformWidth - 1) + kMaxTileHeight * 2 + 64;
 
 				if (pos.y <= 0
-				        || pos.y - p->highestPixel >= tileDrawMap.size.y)
+				        || pos.y - p->highestPixel >= g_vm->_tileDrawMap.size.y)
 					continue;
 
 				*put++ = p;
@@ -2820,7 +2699,7 @@ void buildRipTables(void) {
 			//  Null out pointer
 			mtTable[i] = nullptr;
 			//  Mark the table as unavailable
-			tableIndex = mtRipTable - ripTableList;
+			tableIndex = mtRipTable->_index;
 			tableAvail[tableIndex >> 3] &= ~(1 << (tableIndex & 0x7));
 		}
 	}
@@ -2924,7 +2803,7 @@ inline void drawMetaTiles(void) {
 	//      (replace 256 constant with better value)
 
 	for (;
-	        metaPos.y < tileDrawMap.size.y + kMetaTileHeight * 4 ;
+	        metaPos.y < g_vm->_tileDrawMap.size.y + kMetaTileHeight * 4 ;
 	        baseCoords.u--,
 	        baseCoords.v--
 	    ) {
@@ -2937,64 +2816,6 @@ inline void drawMetaTiles(void) {
 
 		metaPos.y += kMetaDY;
 		metaPos.x += kMetaDX;
-	}
-}
-
-/* ===================================================================== *
-   Mouse Pointer Fixup Routine
- * ===================================================================== */
-
-//  This routine draws an image of the mouse pointer onto the
-//  back buffer, and also updates the mouse pointer's backsave
-//  buffer with the new data underneath it.
-//
-//  Since the blitting of the backsave buffer takes so long,
-//  it would cause annoying flicker to have to hide the mouse
-//  pointer during the blit. Instead, we go ahead and over-write
-//  the image of the mouse pointer with the image of the new
-//  mouse pointer.
-
-inline void drawTileMousePointer(void) {
-	gPixelMap       *currentPtr,
-	                *saveMap;
-	Point16         offset;
-	Rect16          saveExtent,
-	                blitExtent;
-
-	//  Get the image of the pointer and the hotspot offset
-	currentPtr = pointer.getImage(offset);
-
-	//  If pointer exists, and is in a visible state
-	if (currentPtr && pointer.isShown()) {
-		//  Get address of pointer's backsave rect
-		saveMap = pointer.getSaveMap(saveExtent);
-
-		//  If the pointer overlaps the tile scrolling area
-		if (saveExtent.overlap(Rect16(kTileRectX, kTileRectY, kTileRectWidth, kTileRectHeight))) {
-			//  get the intersecting area
-			blitExtent = intersect(saveExtent, Rect16(kTileRectX, kTileRectY, kTileRectWidth, kTileRectHeight));
-
-			mouseSavePort.setMap(saveMap);
-
-			//  Blit the tile data into the backsave buffer
-			mouseSavePort.bltPixels(
-			    tileDrawMap,
-			    blitExtent.x - kTileRectX + fineScroll.x,
-			    blitExtent.y - kTileRectY + fineScroll.y,
-			    blitExtent.x - saveExtent.x,
-			    blitExtent.y - saveExtent.y,
-			    blitExtent.width,
-			    blitExtent.height);
-
-			//  Blit the mouse pointer onto the tile map
-			int x, y;
-
-			x = mouseState.pos.x + offset.x + fineScroll.x - kTileRectX;
-			y = mouseState.pos.y + offset.y + fineScroll.y - kTileRectY;
-
-//			if ( x >=0 && y >=0 )
-			TBlit(&tileDrawMap, currentPtr, x, y);
-		}
 	}
 }
 
@@ -4291,53 +4112,35 @@ void initTileCyclingStates(void) {
 	}
 }
 
-//-----------------------------------------------------------------------
-//	Save the tile cycling state array in a save file
+void saveTileCyclingStates(Common::OutSaveFile *outS) {
+	debugC(2, kDebugSaveload, "Saving TileCyclingStates");
+	outS->write("CYCL", 4);
+	CHUNK_BEGIN;
+	for (int i = 0; i < cycleCount; i++) {
+		debugC(3, kDebugSaveload, "Saving TileCyclingState %d", i);
 
-void saveTileCyclingStates(SaveFileConstructor &saveGame) {
-	TileCycleArchive        *archiveBuffer;
-	int16                   i;
+		out->writeSint32LE(cycleList[i].counter);
+		out->writeByte(cycleList[i].currentState);
 
-	archiveBuffer = new TileCycleArchive[cycleCount]();
-	if (archiveBuffer == nullptr)
-		error("Unable to allocate tile cycle data archive buffer");
-
-	for (i = 0; i < cycleCount; i++) {
-		archiveBuffer[i].counter = cycleList[i].counter;
-		archiveBuffer[i].currentState = cycleList[i].currentState;
+		debugC(4, kDebugSaveload, "... counter = %d", cycleList[i].counter);
+		debugC(4, kDebugSaveload, "... currentState = %d", cycleList[i].currentState);
 	}
-
-	saveGame.writeChunk(
-	    MakeID('C', 'Y', 'C', 'L'),
-	    archiveBuffer,
-	    sizeof(TileCycleArchive) * cycleCount);
-
-	delete[] archiveBuffer;
+	CHUNK_END;
 }
 
-//-----------------------------------------------------------------------
-//	Load the tile cycling state array from a save file
-
-void loadTileCyclingStates(SaveFileReader &saveGame) {
-	TileCycleArchive        *archiveBuffer;
-	int16                   i;
+void loadTileCyclingStates(Common::InSaveFile *in) {
+	debugC(2, kDebugSaveload, "Loading TileCyclingStates");
 
 	initTileCyclingStates();
 
-	assert(saveGame.getChunkSize() == (int)sizeof(TileCycleArchive) * cycleCount);
+	for (int i = 0; i < cycleCount; i++) {
+		debugC(3, kDebugSaveload, "Loading TileCyclingState %d", i);
+		cycleList[i].counter = in->readSint32LE();
+		cycleList[i].currentState = in->readByte();
 
-	archiveBuffer = new TileCycleArchive[cycleCount]();
-	if (archiveBuffer == nullptr)
-		error("Unable to allocate tile cycle data archive buffer");
-
-	saveGame.read(archiveBuffer, sizeof(TileCycleArchive) * cycleCount);
-
-	for (i = 0; i < cycleCount; i++) {
-		cycleList[i].counter = archiveBuffer[i].counter;
-		cycleList[i].currentState = archiveBuffer[i].currentState;
+		debugC(4, kDebugSaveload, "... counter = %d", cycleList[i].counter);
+		debugC(4, kDebugSaveload, "... currentState = %d", cycleList[i].currentState);
 	}
-
-	delete[] archiveBuffer;
 }
 
 //-----------------------------------------------------------------------
@@ -4510,8 +4313,6 @@ void updateMainDisplay(void) {
 	int32           scrollSpeed = defaultScrollSpeed,
 	                scrollDistance;
 
-	int16           viewSize = kTileRectHeight;
-	int16           mapSectors = curMap->mapSize * 8 * 16 / kSectorSize;
 	TilePoint       trackPos,
 	                mCoords;
 
@@ -4574,11 +4375,6 @@ void updateMainDisplay(void) {
 
 	//  Compute the largest U/V rectangle which completely
 	//  encloses the view area, and convert to sector coords.
-	minSector.u = clamp(0, (viewCenter.u - viewSize) / kSectorSize, mapSectors - 1);
-	minSector.v = clamp(0, (viewCenter.v - viewSize) / kSectorSize, mapSectors - 1);
-	maxSector.u = clamp(0, (viewCenter.u + viewSize) / kSectorSize, mapSectors - 1);
-	maxSector.v = clamp(0, (viewCenter.v + viewSize) / kSectorSize, mapSectors - 1);
-
 	buildRoofTable();
 
 	mCoords.u = trackPos.u >> (kTileUVShift + kPlatShift);
@@ -4605,7 +4401,7 @@ void updateMainDisplay(void) {
 void drawMainDisplay(void) {
 
 
-	// draws tiles to tileDrawMap.data
+	// draws tiles to g_vm->_tileDrawMap.data
 	drawMetaTiles();
 
 	//  Draw sprites onto back buffer
@@ -4617,20 +4413,16 @@ void drawMainDisplay(void) {
 	Rect16 rect(kTileRectX, kTileRectY, kTileRectWidth, kTileRectHeight);
 
 	//  Render floating windows
-	drawFloatingWindows(backPort,
+	drawFloatingWindows(g_vm->_backPort,
 	                    Point16(kTileRectX - fineScroll.x, kTileRectY),
 	                    rect);
-
-	//  Render the image of the mouse pointer on everything else
-	drawTileMousePointer();
-
 	//  Blit it all onto the screen
 	drawPage->writePixels(
 	    rect,
-	    tileDrawMap.data
+	    g_vm->_tileDrawMap.data
 	    + fineScroll.x
-	    + fineScroll.y * tileDrawMap.size.x,
-	    tileDrawMap.size.x);
+	    + fineScroll.y * g_vm->_tileDrawMap.size.x,
+	    g_vm->_tileDrawMap.size.x);
 
 	updateFrameCount();
 }
@@ -4758,10 +4550,8 @@ uint16 lineDist(
 			dist = v - u2 * u / v2;
 	} else if (u2 == 0)
 		dist = v;
-	else if (v2 == 0)
+	else // here v2 == 0
 		dist = u;
-	else
-		dist = lineFar;
 
 	return ABS(dist);
 }

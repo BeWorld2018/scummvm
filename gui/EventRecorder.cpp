@@ -77,6 +77,13 @@ EventRecorder::EventRecorder() {
 	_needRedraw = false;
 	_processingMillis = false;
 	_fastPlayback = false;
+	_lastTimeDate.tm_sec = 0;
+	_lastTimeDate.tm_min = 0;
+	_lastTimeDate.tm_hour = 0;
+	_lastTimeDate.tm_mday = 0;
+	_lastTimeDate.tm_mon = 0;
+	_lastTimeDate.tm_year = 0;
+	_lastTimeDate.tm_wday = 0;
 
 	_fakeTimer = 0;
 	_savedState = false;
@@ -117,6 +124,42 @@ void EventRecorder::deinit() {
 	switchMixer();
 	switchTimerManagers();
 	DebugMan.disableDebugChannel("EventRec");
+}
+
+void EventRecorder::processTimeAndDate(TimeDate &td, bool skipRecord) {
+	if (!_initialized) {
+		return;
+	}
+	if (skipRecord) {
+		td = _lastTimeDate;
+		return;
+	}
+	Common::RecorderEvent timeDateEvent;
+	switch (_recordMode) {
+	case kRecorderRecord:
+		timeDateEvent.recordedtype = Common::kRecorderEventTypeTimeDate;
+		timeDateEvent.timeDate = td;
+		_lastTimeDate = td;
+		_playbackFile->writeEvent(timeDateEvent);
+		break;
+	case kRecorderPlayback:
+		if (_nextEvent.recordedtype != Common::kRecorderEventTypeTimeDate) {
+			// just re-use any previous date time value
+			td = _lastTimeDate;
+			return;
+		}
+		_lastTimeDate = _nextEvent.timeDate;
+		td = _lastTimeDate;
+		debug(3, "timedate event");
+
+		_nextEvent = _playbackFile->getNextEvent();
+		break;
+	case kRecorderPlaybackPause:
+		td = _lastTimeDate;
+		break;
+	default:
+		break;
+	}
 }
 
 void EventRecorder::processMillis(uint32 &millis, bool skipRecord) {
@@ -189,7 +232,9 @@ bool EventRecorder::pollEvent(Common::Event &ev) {
 	if ((_recordMode != kRecorderPlayback) || !_initialized)
 		return false;
 
-	if ((_nextEvent.recordedtype == Common::kRecorderEventTypeTimer) || (_nextEvent.type == Common::EVENT_INVALID)) {
+	if (_nextEvent.recordedtype == Common::kRecorderEventTypeTimer
+	 || _nextEvent.recordedtype == Common::kRecorderEventTypeTimeDate
+	 || _nextEvent.type == Common::EVENT_INVALID) {
 		return false;
 	}
 
@@ -241,11 +286,12 @@ void EventRecorder::RegisterEventSource() {
 }
 
 uint32 EventRecorder::getRandomSeed(const Common::String &name) {
+	if (_recordMode == kRecorderPlayback) {
+		return _playbackFile->getHeader().randomSourceRecords[name];
+	}
 	uint32 result = g_system->getMillis();
 	if (_recordMode == kRecorderRecord) {
 		_playbackFile->getHeader().randomSourceRecords[name] = result;
-	} else if (_recordMode == kRecorderPlayback) {
-		result = _playbackFile->getHeader().randomSourceRecords[name];
 	}
 	return result;
 }
@@ -605,7 +651,7 @@ void EventRecorder::setFileHeader() {
 		setAuthor("Unknown Author");
 	}
 	if (_name.empty()) {
-		g_eventRec.setName(Common::String::format("%.2d.%.2d.%.4d ", t.tm_mday, t.tm_mon, 1900 + t.tm_year) + desc.description);
+		g_eventRec.setName(Common::String::format("%.2d.%.2d.%.4d ", t.tm_mday, t.tm_mon + 1, 1900 + t.tm_year) + desc.description);
 	}
 	_playbackFile->getHeader().author = _author;
 	_playbackFile->getHeader().notes = _desc;

@@ -73,7 +73,7 @@ public:
 	virtual void setEditable(bool editable) {}
 	virtual bool isModified() { return _modified; }
 	virtual void setModified(bool modified) { _modified = modified; }
-	virtual Graphics::MacWidget *createWidget(Common::Rect &bbox, Channel *channel) { return nullptr; }
+	virtual Graphics::MacWidget *createWidget(Common::Rect &bbox, Channel *channel, SpriteType spriteType) { return nullptr; }
 	virtual void updateWidget(Graphics::MacWidget *widget, Channel *channel) {}
 	virtual void updateFromWidget(Graphics::MacWidget *widget) {}
 	virtual Common::Rect getInitialRect() { return _initialRect; }
@@ -114,10 +114,11 @@ class BitmapCastMember : public CastMember {
 public:
 	BitmapCastMember(Cast *cast, uint16 castId, Common::SeekableReadStreamEndian &stream, uint32 castTag, uint16 version, uint8 flags1 = 0);
 	~BitmapCastMember();
-	virtual Graphics::MacWidget *createWidget(Common::Rect &bbox, Channel *channel) override;
+	virtual Graphics::MacWidget *createWidget(Common::Rect &bbox, Channel *channel, SpriteType spriteType) override;
 
-	void createMatte();
-	Graphics::Surface *getMatte();
+	void createMatte(Common::Rect &bbox);
+	Graphics::Surface *getMatte(Common::Rect &bbox);
+	void copyStretchImg(Graphics::Surface *surface, const Common::Rect &bbox);
 
 	bool hasField(int field) override;
 	Datum getField(int field) override;
@@ -145,7 +146,7 @@ public:
 	~DigitalVideoCastMember();
 
 	virtual bool isModified() override;
-	virtual Graphics::MacWidget *createWidget(Common::Rect &bbox, Channel *channel) override;
+	virtual Graphics::MacWidget *createWidget(Common::Rect &bbox, Channel *channel, SpriteType spriteType) override;
 
 	bool loadVideo(Common::String path);
 	void startVideo(Channel *channel);
@@ -219,8 +220,8 @@ public:
 	TextCastMember(Cast *cast, uint16 castId, Common::SeekableReadStreamEndian &stream, uint16 version, uint8 flags1 = 0, bool asButton = false);
 	virtual void setColors(uint32 *fgcolor, uint32 *bgcolor) override;
 
-	void setText(const char *text);
-	virtual Graphics::MacWidget *createWidget(Common::Rect &bbox, Channel *channel) override;
+	void setText(const Common::U32String &text);
+	virtual Graphics::MacWidget *createWidget(Common::Rect &bbox, Channel *channel, SpriteType spriteType) override;
 
 	virtual bool isEditable() override;
 	virtual void setEditable(bool editable) override;
@@ -263,12 +264,12 @@ public:
 	bool _editable;
 	int _lineSpacing;
 
-	Common::String _ftext;
-	Common::String _ptext;
+	Common::U32String _ftext;
+	Common::U32String _ptext;
 	void importStxt(const Stxt *stxt);
 	void importRTE(byte *text);
 
-	Common::String getText();
+	Common::U32String getText();
 
 private:
 	uint32 _bgcolor;

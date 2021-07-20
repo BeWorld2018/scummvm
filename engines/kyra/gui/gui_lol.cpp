@@ -2529,6 +2529,14 @@ void GUI_LoL::setupSaveMenuSlots(Menu &menu, int num) {
 				fC = _screen->getTextWidth(s);
 			}
 
+			if (_vm->gameFlags().lang == Common::JA_JPN) {
+				// Strip special characters from GMM save dialog which might get misinterpreted as SJIS
+				for (uint ii = 0; ii < strlen(s); ++ii) {
+					if (s[ii] < 32) // due to the signed char type this will also clean up everything >= 0x80
+						s[ii] = ' ';
+				}
+			}
+
 			menu.item[i].itemString = s;
 			s += (strlen(s) + 1);
 			menu.item[i].saveSlot = _saveSlots[i + _savegameOffset - slotOffs];
@@ -2836,7 +2844,7 @@ int GUI_LoL::clickedSavenameMenu(Button *button) {
 	updateMenuButton(button);
 	if (button->arg == _savenameMenu.item[0].itemId) {
 
-		Util::convertDOSToISO(_saveDescription);
+		Util::convertDOSToUTF8(_saveDescription, 5120 - (int)((uint8*)_saveDescription - _vm->_tempBuffer5120));
 
 		int slot = _menuResult == -2 ? getNextSavegameSlot() : _menuResult - 1;
 		Graphics::Surface thumb;

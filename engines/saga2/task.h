@@ -86,11 +86,8 @@ TaskStack *getTaskStackAddress(TaskStackID id);
 //  Initialize the task stack list
 void initTaskStacks(void);
 
-//  Save the task stack list to a save file
-void saveTaskStacks(SaveFileConstructor &saveGame);
-
-//  Load the task stack list from a save file
-void loadTaskStacks(SaveFileReader &saveGame);
+void saveTaskStacks(Common::OutSaveFile *outS);
+void loadTaskStacks(Common::InSaveFile *in, int32 chunkSize);
 
 //  Cleanup the task stacks
 void cleanupTaskStacks(void);
@@ -111,11 +108,8 @@ Task *getTaskAddress(TaskID id);
 //  Initialize the task list
 void initTasks(void);
 
-//  Save the task list to a save file
-void saveTasks(SaveFileConstructor &saveGame);
-
-//  Load the task list from a save file
-void loadTasks(SaveFileReader &saveGame);
+void saveTasks(Common::OutSaveFile *outS);
+void loadTasks(Common::InSaveFile *in, int32 chunkSize);
 
 //  Cleanup the task list
 void cleanupTasks(void);
@@ -131,12 +125,13 @@ class Task {
 protected:
 	//  A pointer to this task's stack
 	TaskStack   *stack;
+	TaskStackID _stackID;
 
 public:
 	Common::String _type;
 
 	//  Constructor -- initial construction
-	Task(TaskStack *ts) : stack(ts) {
+	Task(TaskStack *ts) : stack(ts), _stackID(NoTaskStack) {
 		newTask(this);
 	}
 
@@ -144,23 +139,21 @@ public:
 		newTask(this, id);
 	}
 
-	//  Constructor -- reconstruct from archive buffer
-	Task(void **buf, TaskID id);
+	Task(Common::InSaveFile *in, TaskID id);
 
 	//  Virtual destructor -- do nothing
 	virtual ~Task(void) {
 		deleteTask(this);
 	}
 
-	//  Fixup any subtask pointers
+	//	Fixup any subtask pointers
 	virtual void fixup(void);
 
 	//  Return the number of bytes necessary to archive this Task
 	//  in a buffer
 	virtual int32 archiveSize(void) const;
 
-	//  Create an archive of this task in a buffer
-	virtual void *archive(void *buf) const;
+	virtual void write(Common::MemoryWriteStreamDynamic *out) const;
 
 	//  Return an integer representing the type of this task
 	virtual int16 getType(void) const = 0;
@@ -194,15 +187,13 @@ public:
 		wander();
 	}
 
-	//  Constructor -- reconstruct from archive buffer
-	WanderTask(void **buf, TaskID id);
+	WanderTask(Common::InSaveFile *in, TaskID id);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
 
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
+	void write(Common::MemoryWriteStreamDynamic *out) const;
 
 	//  Return an integer representing the type of this task
 	int16 getType(void) const;
@@ -247,6 +238,7 @@ class TetheredWanderTask : public WanderTask {
 
 	//  Pointer to subtask for going to the tether region
 	GotoRegionTask  *gotoTether;
+	TaskID _gotoTetherID;
 
 public:
 	//  Constructor
@@ -261,23 +253,22 @@ public:
 		minV(vMin),
 		maxU(uMax),
 		maxV(vMax),
-		gotoTether(NULL) {
+		gotoTether(NULL),
+		_gotoTetherID(NoTask) {
 		debugC(2, kDebugTasks, " - TetheredWanderTask");
 		_type = "TetheredWanderTask";
 	}
 
-	//  Constructor -- reconstruct from archive buffer
-	TetheredWanderTask(void **buf, TaskID id);
+	TetheredWanderTask(Common::InSaveFile *in, TaskID id);
 
-	//  Fixup the subtask pointers
+	//	Fixup the subtask pointers
 	void fixup(void);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
 
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
+	void write(Common::MemoryWriteStreamDynamic *out) const;
 
 #if DEBUG
 	//  Debugging function used to mark this task and any sub tasks as
@@ -303,6 +294,7 @@ public:
 
 class GotoTask : public Task {
 	WanderTask  *wander;
+	TaskID _wanderID;
 	bool        prevRunState;
 
 public:
@@ -310,13 +302,13 @@ public:
 	GotoTask(TaskStack *ts) :
 		Task(ts),
 		wander(NULL),
+		_wanderID(NoTask),
 		prevRunState(false) {
 		debugC(2, kDebugTasks, " - GotoTask");
 		_type = "GotoTask";
 	}
 
-	//  Constructor -- reconstruct from archive buffer
-	GotoTask(void **buf, TaskID id);
+	GotoTask(Common::InSaveFile *in, TaskID id);
 
 	//  Fixup the subtask pointer
 	void fixup(void);
@@ -325,8 +317,7 @@ public:
 	//  a buffer
 	int32 archiveSize(void) const;
 
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
+	void write(Common::MemoryWriteStreamDynamic *out) const;
 
 #if DEBUG
 	//  Debugging function used to mark this task and any sub tasks as
@@ -366,15 +357,13 @@ public:
 		_type = "GotoLocationTask";
 	}
 
-	//  Constructor -- reconstruct from archive buffer
-	GotoLocationTask(void **buf, TaskID id);
+	GotoLocationTask(Common::InSaveFile *in, TaskID id);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
 
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
+	void write(Common::MemoryWriteStreamDynamic *out) const;
 
 	//  Return an integer representing the type of this task
 	int16 getType(void) const;
@@ -424,15 +413,13 @@ public:
 		_type = "GotoRegionTask";
 	}
 
-	//  Constructor -- reconstruct from archive buffer
-	GotoRegionTask(void **buf, TaskID id);
+	GotoRegionTask(Common::InSaveFile *in, TaskID id);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
 
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
+	void write(Common::MemoryWriteStreamDynamic *out) const;
 
 	//  Return an integer representing the type of this task
 	int16 getType(void) const;
@@ -483,15 +470,13 @@ public:
 		_type = "GotoObjectTargetTask";
 	}
 
-	//  Constructor -- reconstruct from archive buffer
-	GotoObjectTargetTask(void **buf, TaskID id);
+	GotoObjectTargetTask(Common::InSaveFile *in, TaskID id);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
 
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
+	void write(Common::MemoryWriteStreamDynamic *out) const;
 
 private:
 	TilePoint destination(void);
@@ -530,15 +515,13 @@ public:
 		_type = "GotoObjectTask";
 	}
 
-	//  Constructor -- reconstruct from archive buffer
-	GotoObjectTask(void **buf, TaskID id);
+	GotoObjectTask(Common::InSaveFile *in, TaskID id);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
 
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
+	void write(Common::MemoryWriteStreamDynamic *out) const;
 
 	//  Return an integer representing the type of this task
 	int16 getType(void) const;
@@ -570,15 +553,13 @@ public:
 		debugC(2, kDebugTasks, " - GotoActorTask");
 		_type = "GotoActorTask";
 	}
-	//  Constructor -- reconstruct from archive buffer
-	GotoActorTask(void **buf, TaskID id);
+	GotoActorTask(Common::InSaveFile *in, TaskID id);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
 
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
+	void write(Common::MemoryWriteStreamDynamic *out) const;
 
 	//  Return an integer representing the type of this task
 	int16 getType(void) const;
@@ -601,6 +582,7 @@ private:
 
 class GoAwayFromTask : public Task {
 	GotoLocationTask        *goTask;
+	TaskID _goTaskID;
 
 	uint8                   flags;
 
@@ -613,6 +595,7 @@ public:
 	GoAwayFromTask(TaskStack *ts) :
 		Task(ts),
 		goTask(NULL),
+		_goTaskID(NoTask),
 		flags(0) {
 		debugC(2, kDebugTasks, " - GoAwayFromTask1");
 		_type = "GoAwayFromTask";
@@ -621,23 +604,22 @@ public:
 	GoAwayFromTask(TaskStack *ts, bool runFlag) :
 		Task(ts),
 		goTask(NULL),
+		_goTaskID(NoTask),
 		flags(runFlag ? run : 0) {
 		debugC(2, kDebugTasks, " - GoAwayFromTask2");
 		_type = "GoAwayFromTask";
 	}
 
-	//  Constructor -- reconstruct from archive buffer
-	GoAwayFromTask(void **buf, TaskID id);
+	GoAwayFromTask(Common::InSaveFile *in, TaskID id);
 
-	//  Fixup the subtask pointer
+	//	Fixup the subtask pointer
 	void fixup(void);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
 
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
+	void write(Common::MemoryWriteStreamDynamic *out) const;
 
 #if DEBUG
 	//  Debugging function used to mark this task and any sub tasks as
@@ -669,15 +651,13 @@ public:
 		_type = "GoAwayFromObjectTask";
 	}
 
-	//  Constructor -- reconstruct from archive buffer
-	GoAwayFromObjectTask(void **buf, TaskID id);
+	GoAwayFromObjectTask(Common::InSaveFile *in, TaskID id);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
 
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
+	void write(Common::MemoryWriteStreamDynamic *out) const;
 
 	//  Return an integer representing the type of this task
 	int16 getType(void) const;
@@ -707,15 +687,13 @@ public:
 	    const ActorTarget   &at,
 	    bool                runFlag = false);
 
-	//  Constructor -- reconstruct from archive buffer
-	GoAwayFromActorTask(void **buf, TaskID id);
+	GoAwayFromActorTask(Common::InSaveFile *in, TaskID id);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
 
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
+	void write(Common::MemoryWriteStreamDynamic *out) const;
 
 	//  Return an integer representing the type of this task
 	int16 getType(void) const;
@@ -737,6 +715,7 @@ private:
 
 class HuntTask : public Task {
 	Task            *subTask;   //  This will either be a wander task of a
+	TaskID _subTaskID;
 	//  goto task
 	uint8           huntFlags;
 
@@ -747,25 +726,21 @@ class HuntTask : public Task {
 
 public:
 	//  Constructor -- initial construction
-	HuntTask(TaskStack *ts) :
-		Task(ts),
-		huntFlags(0) {
+	HuntTask(TaskStack *ts) : Task(ts), huntFlags(0), subTask(nullptr), _subTaskID(NoTask) {
 		debugC(2, kDebugTasks, " - HuntTask");
 		_type = "HuntTask";
 	}
 
-	//  Constructor -- reconstruct from archive buffer
-	HuntTask(void **buf, TaskID id);
+	HuntTask(Common::InSaveFile *in, TaskID id);
 
-	//  Fixup the subtask pointer
+	//	Fixup the subtask pointer
 	void fixup(void);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
 
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
+	void write(Common::MemoryWriteStreamDynamic *out) const;
 
 #if DEBUG
 	//  Debugging function used to mark this task and any sub tasks as
@@ -808,15 +783,13 @@ public:
 	//  Constructor -- initial construction
 	HuntLocationTask(TaskStack *ts, const Target &t);
 
-	//  Constructor -- reconstruct from archive buffer
-	HuntLocationTask(void **buf, TaskID id);
+	HuntLocationTask(Common::InSaveFile *in, TaskID id);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
 
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
+	void write(Common::MemoryWriteStreamDynamic *out) const;
 
 protected:
 	bool targetHasChanged(GotoTask *gotoTarget);
@@ -853,15 +826,13 @@ public:
 		_type = "HuntToBeNearLocationTask";
 	}
 
-	//  Constructor -- reconstruct from archive buffer
-	HuntToBeNearLocationTask(void **buf, TaskID id);
+	HuntToBeNearLocationTask(Common::InSaveFile *in, TaskID id);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
 
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
+	void write(Common::MemoryWriteStreamDynamic *out) const;
 
 	//  Return an integer representing the type of this task
 	int16 getType(void) const;
@@ -899,15 +870,13 @@ public:
 	//  Constructor -- initial construction
 	HuntObjectTask(TaskStack *ts, const ObjectTarget &ot);
 
-	//  Constructor -- reconstruct from archive buffer
-	HuntObjectTask(void **buf, TaskID id);
+	HuntObjectTask(Common::InSaveFile *in, TaskID id);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
 
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
+	void write(Common::MemoryWriteStreamDynamic *out) const;
 
 protected:
 	bool targetHasChanged(GotoTask *gotoTarget);
@@ -946,15 +915,13 @@ public:
 		_type = "HuntToBeNearObjectTask";
 	}
 
-	//  Constructor -- reconstruct from archive buffer
-	HuntToBeNearObjectTask(void **buf, TaskID id);
+	HuntToBeNearObjectTask(Common::InSaveFile *in, TaskID id);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
 
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
+	void write(Common::MemoryWriteStreamDynamic *out) const;
 
 	//  Return an integer representing the type of this task
 	int16 getType(void) const;
@@ -1002,15 +969,13 @@ public:
 		_type = "HuntToPossessTask";
 	}
 
-	//  Constructor -- reconstruct from archive buffer
-	HuntToPossessTask(void **buf, TaskID id);
+	HuntToPossessTask(Common::InSaveFile *in, TaskID id);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
 
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
+	void write(Common::MemoryWriteStreamDynamic *out) const;
 
 	//  Return an integer representing the type of this task
 	int16 getType(void) const;
@@ -1051,15 +1016,13 @@ public:
 	    const ActorTarget   &at,
 	    bool                trackFlag);
 
-	//  Constructor -- reconstruct from archive buffer
-	HuntActorTask(void **buf, TaskID id);
+	HuntActorTask(Common::InSaveFile *in, TaskID id);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
 
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
+	void write(Common::MemoryWriteStreamDynamic *out) const;
 
 protected:
 	bool targetHasChanged(GotoTask *gotoTarget);
@@ -1081,6 +1044,7 @@ protected:
 
 class HuntToBeNearActorTask : public HuntActorTask {
 	GoAwayFromObjectTask    *goAway;    //  The 'go away' sub task pointer
+	TaskID _goAwayID;
 	uint16                  range;      //  Maximum range
 
 	uint8                   targetEvaluateCtr;
@@ -1104,24 +1068,23 @@ public:
 	    bool                trackFlag = false) :
 		HuntActorTask(ts, at, trackFlag),
 		goAway(NULL),
+		_goAwayID(NoTask),
 		range(MAX<uint16>(r, 16)),
 		targetEvaluateCtr(0) {
 		debugC(2, kDebugTasks, " - HuntToBeNearActorTask");
 		_type = "HuntToBeNearActorTask";
 	}
 
-	//  Constructor -- reconstruct from archive buffer
-	HuntToBeNearActorTask(void **buf, TaskID id);
+	HuntToBeNearActorTask(Common::InSaveFile *in, TaskID id);
 
-	//  Fixup the subtask pointer
+	//	Fixup the subtask pointer
 	void fixup(void);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
 
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
+	void write(Common::MemoryWriteStreamDynamic *out) const;
 
 #if DEBUG
 	//  Debugging function used to mark this task and any sub tasks as
@@ -1181,15 +1144,13 @@ public:
 	    const ActorTarget   &at,
 	    bool                trackFlag = false);
 
-	//  Constructor -- reconstruct from archive buffer
-	HuntToKillTask(void **buf, TaskID id);
+	HuntToKillTask(Common::InSaveFile *in, TaskID id);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
 
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
+	void write(Common::MemoryWriteStreamDynamic *out) const;
 
 	//  Return an integer representing the type of this task
 	int16 getType(void) const;
@@ -1239,15 +1200,13 @@ public:
 		_type = "HuntToGiveTask";
 	}
 
-	//  Constructor -- reconstruct from archive buffer
-	HuntToGiveTask(void **buf, TaskID id);
+	HuntToGiveTask(Common::InSaveFile *in, TaskID id);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
 
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
+	void write(Common::MemoryWriteStreamDynamic *out) const;
 
 	//  Return an integer representing the type of this task
 	int16 getType(void) const;
@@ -1272,6 +1231,7 @@ class AttendTask;
 
 class BandTask : public HuntTask {
 	AttendTask          *attend;
+	TaskID _attendID;
 
 	TilePoint           currentTarget;
 	uint8               targetEvaluateCtr;
@@ -1304,7 +1264,7 @@ public:
 		int             bandIndex;
 
 	public:
-		BandingRepulsorIterator(Actor *actor) : a(actor) {}
+		BandingRepulsorIterator(Actor *actor) : a(actor), band(nullptr), bandIndex(0) {}
 
 		bool first(
 		    TilePoint   &repulsorVector,
@@ -1329,7 +1289,9 @@ public:
 
 	public:
 		BandAndAvoidEnemiesRepulsorIterator(Actor *actor) :
-			BandingRepulsorIterator(actor) {
+				BandingRepulsorIterator(actor), numActors(0), actorIndex(0), iteratingThruEnemies(false) {
+			for (int i = 0; i < 6; i++)
+				actorArray[i] = 0;
 		}
 
 	private:
@@ -1356,24 +1318,23 @@ public:
 	BandTask(TaskStack *ts) :
 		HuntTask(ts),
 		attend(NULL),
+		_attendID(NoTask),
 		currentTarget(Nowhere),
 		targetEvaluateCtr(0) {
 		debugC(2, kDebugTasks, " - BandTask");
 		_type = "BandTask";
 	}
 
-	//  Constructor -- reconstruct from archive buffer
-	BandTask(void **buf, TaskID id);
+	BandTask(Common::InSaveFile *in, TaskID id);
 
-	//  Fixup the subtask pointer
+	//	Fixup the subtask pointer
 	void fixup(void);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
 
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
+	void write(Common::MemoryWriteStreamDynamic *out) const;
 
 #if DEBUG
 	//  Debugging function used to mark this task and any sub tasks as
@@ -1447,8 +1408,7 @@ public:
 	//  Constructor -- initial constructor
 	BandAndAvoidEnemiesTask(TaskStack *ts) : BandTask(ts) {}
 
-	//  Constructor -- reconstruct from archive buffer
-	BandAndAvoidEnemiesTask(void **buf, TaskID id) : BandTask(buf, id) {}
+	BandAndAvoidEnemiesTask(Common::InSaveFile *in, TaskID id) : BandTask(in, id) {}
 
 	//  Return an integer representing the type of this task
 	int16 getType(void) const;
@@ -1467,6 +1427,7 @@ protected:
 
 class FollowPatrolRouteTask : public Task {
 	GotoLocationTask        *gotoWayPoint;  //  A goto waypoint sub task
+	TaskID _gotoWayPointID;
 	//  pointer.
 	PatrolRouteIterator     patrolIter;     //  The patrol route iterator.
 	int16                   lastWayPointNum;    //  Waypoint at which to end
@@ -1484,25 +1445,24 @@ public:
 	    int16               stopAt = -1) :
 		Task(ts),
 		gotoWayPoint(NULL),
+		_gotoWayPointID(NoTask),
 		patrolIter(iter),
-		lastWayPointNum(stopAt) {
+		lastWayPointNum(stopAt), counter(0) {
 		debugC(2, kDebugTasks, " - FollowPatrolRouteTask");
 		_type = "FollowPatrolRouteTask";
 		followPatrolRoute();
 	}
 
-	//  Constructor -- reconstruct from archive buffer
-	FollowPatrolRouteTask(void **buf, TaskID id);
+	FollowPatrolRouteTask(Common::InSaveFile *in, TaskID id);
 
-	//  Fixup the subtask pointer
+	//	Fixup the subtask pointer
 	void fixup(void);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
 
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
+	void write(Common::MemoryWriteStreamDynamic *out) const;
 
 #if DEBUG
 	//  Debugging function used to mark this task and any sub tasks as
@@ -1549,15 +1509,13 @@ public:
 		_type = "AttendTask";
 	}
 
-	//  Constructor -- reconstruct from archive buffer
-	AttendTask(void **buf, TaskID id);
+	AttendTask(Common::InSaveFile *in, TaskID id);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
 
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
+	void write(Common::MemoryWriteStreamDynamic *out) const;
 
 	//  Return an integer representing the type of this task
 	int16 getType(void) const;
@@ -1591,18 +1549,12 @@ public:
 		subTask(NULL) {
 	}
 
-	//  Constructor -- reconstruct from archive buffer
-	DefendTask(void **buf, TaskID id);
-
 	//  Fixup the subtask pointer
 	void fixup(void);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
-
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
 
 	//  Return an integer representing the type of this task
 	int16 getType(void) const;
@@ -1639,15 +1591,9 @@ public:
 		flags(0) {
 	}
 
-	//  Constructor -- reconstruct from archive buffer
-	ParryTask(void **buf, TaskID id);
-
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void) const;
-
-	//  Create an archive of this object in a buffer
-	void *archive(void *buf) const;
 
 	//  Return an integer representing the type of this task
 	int16 getType(void) const;
@@ -1678,6 +1624,12 @@ public:
 	Actor           *actor;     //  Pointer to actor performing tasks
 
 	//  Constructor
+	TaskStack() :
+		stackBottomID(0),
+		evalCount(0),
+		evalRate(0),
+		actor(nullptr) {}
+
 	TaskStack(Actor *a) :
 		stackBottomID(NoTask),
 		actor(a),
@@ -1687,11 +1639,10 @@ public:
 		newTaskStack(this);
 	}
 
-	//  Constructor -- reconstruct from archive buffer
-	TaskStack(void **buf);
-
 	//  Destructor
 	~TaskStack(void) {
+		if (actor)
+			actor->curTask = nullptr;
 		deleteTaskStack(this);
 	}
 
@@ -1704,8 +1655,9 @@ public:
 		            +   sizeof(evalRate);
 	}
 
-	//  Create an archive of this TaskStack in a buffer
-	void *archive(void *buf);
+	void write(Common::MemoryWriteStreamDynamic *out);
+
+	void read(Common::InSaveFile *in);
 
 	//  Set the bottom task of this task stack
 	void setTask(Task *t);

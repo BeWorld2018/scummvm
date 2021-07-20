@@ -63,7 +63,6 @@ Symbol::Symbol() {
 	*refCount = 1;
 	nargs = 0;
 	maxArgs = 0;
-	parens = true;
 	targetType = kNoneObj;
 	argNames = nullptr;
 	varNames = nullptr;
@@ -81,7 +80,6 @@ Symbol::Symbol(const Symbol &s) {
 	*refCount += 1;
 	nargs = s.nargs;
 	maxArgs = s.maxArgs;
-	parens = s.parens;
 	targetType = s.targetType;
 	argNames = s.argNames;
 	varNames = s.varNames;
@@ -103,7 +101,6 @@ Symbol& Symbol::operator=(const Symbol &s) {
 	*refCount += 1;
 	nargs = s.nargs;
 	maxArgs = s.maxArgs;
-	parens = s.parens;
 	targetType = s.targetType;
 	argNames = s.argNames;
 	varNames = s.varNames;
@@ -181,6 +178,7 @@ Lingo::Lingo(DirectorEngine *vm) : _vm(vm) {
 	_compiler = new LingoCompiler;
 
 	initEventHandlerTypes();
+	initCharNormalizations();
 
 	initBuiltIns();
 	initFuncs();
@@ -249,9 +247,9 @@ Symbol Lingo::getHandler(const Common::String &name) {
 	return Symbol();
 }
 
-void LingoArchive::addCode(const char *code, ScriptType type, uint16 id, const char *scriptName) {
+void LingoArchive::addCode(const Common::U32String &code, ScriptType type, uint16 id, const char *scriptName) {
 	debugC(1, kDebugCompile, "Add code for type %s(%d) with id %d in '%s%s'\n"
-			"***********\n%s\n\n***********", scriptType2str(type), type, id, g_director->getCurrentPath().c_str(), cast->getMacName().c_str(), code);
+			"***********\n%s\n\n***********", scriptType2str(type), type, id, g_director->getCurrentPath().c_str(), cast->getMacName().c_str(), code.encode().c_str());
 
 	if (getScriptContext(type, id)) {
 		// We can't undefine context data because it could be used in e.g. symbols.
@@ -945,7 +943,7 @@ int Datum::equalTo(Datum &d, bool ignoreCase) const {
 	case STRING:
 	case SYMBOL:
 		if (ignoreCase) {
-			return toLowercaseMac(asString()).equals(toLowercaseMac(d.asString()));
+			return g_lingo->normalizeString(asString()).equals(g_lingo->normalizeString(d.asString()));
 		} else {
 			return asString().equals(d.asString());
 		}
@@ -959,7 +957,7 @@ int Datum::equalTo(Datum &d, bool ignoreCase) const {
 	return 0;
 }
 
-int Datum::compareTo(Datum &d, bool ignoreCase) const {
+int Datum::compareTo(Datum &d) const {
 	int alignType = g_lingo->getAlignedType(*this, d, false);
 
 	if (alignType == FLOAT) {
@@ -983,11 +981,7 @@ int Datum::compareTo(Datum &d, bool ignoreCase) const {
 			return 1;
 		}
 	} else if (alignType == STRING) {
-		if (ignoreCase) {
-			return toLowercaseMac(asString()).compareTo(toLowercaseMac(d.asString()));
-		} else {
-			return asString().compareTo(d.asString());
-		}
+		return compareStrings(asString(), d.asString());
 	} else {
 		warning("Invalid comparison between types %s and %s", type2str(), d.type2str());
 		return 0;
@@ -1025,7 +1019,7 @@ void Lingo::runTests() {
 
 			debug(">> Compiling file %s of size %d, id: %d", fileList[i].c_str(), size, counter);
 
-			mainArchive->addCode(script, kTestScript, counter);
+			mainArchive->addCode(Common::U32String(script, Common::kMacRoman), kTestScript, counter);
 
 			if (!debugChannelSet(-1, kDebugCompileOnly)) {
 				if (!_compiler->_hadError)
@@ -1169,7 +1163,7 @@ void Lingo::varAssign(const Datum &var, const Datum &value) {
 			}
 			switch (member->_type) {
 			case kCastText:
-				((TextCastMember *)member)->setText(value.asString().c_str());
+				((TextCastMember *)member)->setText(value.asString());
 				break;
 			default:
 				warning("varAssign: Unhandled cast type %d", member->_type);
@@ -1179,10 +1173,10 @@ void Lingo::varAssign(const Datum &var, const Datum &value) {
 		break;
 	case CHUNKREF:
 		{
-			Common::String src = var.u.cref->source.eval().asString();
-			Common::String res;
+			Common::U32String src = evalChunkRef(var.u.cref->source);
+			Common::U32String res;
 			if (var.u.cref->start >= 0) {
-				res = src.substr(0, var.u.cref->start) + value.asString() + src.substr(var.u.cref->end);
+				res = src.substr(0, var.u.cref->start) + value.asString().decode(Common::kUtf8) + src.substr(var.u.cref->end);
 			} else {
 				// non-existent chunk - insert more chars, items, or lines
 				res = src;
@@ -1204,14 +1198,14 @@ void Lingo::varAssign(const Datum &var, const Datum &value) {
 					break;
 				case kChunkLine:
 					while (numberOfChunks < var.u.cref->startChunk ) {
-						res += '\n';
+						res += '\r';
 						numberOfChunks++;
 					}
 					break;
 				}
 				res += value.asString();
 			}
-			varAssign(var.u.cref->source, res);
+			varAssign(var.u.cref->source, res.encode(Common::kUtf8));
 		}
 		break;
 	default:
@@ -1276,41 +1270,63 @@ Datum Lingo::varFetch(const Datum &var, bool silent) {
 		break;
 	case FIELDREF:
 	case CASTREF:
+	case CHUNKREF:
+		{
+			result.type = STRING;
+			result.u.s = new Common::String(evalChunkRef(var), Common::kUtf8);
+		}
+		break;
+	default:
+		warning("varFetch: fetch from non-variable");
+		break;
+	}
+
+	return result;
+}
+
+Common::U32String Lingo::evalChunkRef(const Datum &var) {
+	Common::U32String result;
+
+	switch (var.type) {
+	case VARREF:
+	case GLOBALREF:
+	case LOCALREF:
+	case PROPREF:
+		result = varFetch(var).asString().decode(Common::kUtf8);
+		break;
+	case FIELDREF:
+	case CASTREF:
 		{
 			Movie *movie = g_director->getCurrentMovie();
 			if (!movie) {
-				warning("varFetch: Assigning to a reference to an empty movie");
+				warning("evalChunkRef: Assigning to a reference to an empty movie");
 				return result;
 			}
 			CastMember *member = movie->getCastMember(*var.u.cast);
 			if (!member) {
-				warning("varFetch: Unknown %s", var.u.cast->asString().c_str());
+				warning("evalChunkRef: Unknown %s", var.u.cast->asString().c_str());
 				return result;
 			}
 			switch (member->_type) {
 			case kCastText:
-				result.type = STRING;
-				result.u.s = new Common::String(((TextCastMember *)member)->getText());
+				result = ((TextCastMember *)member)->getText();
 				break;
 			default:
-				warning("varFetch: Unhandled cast type %d", member->_type);
+				warning("evalChunkRef: Unhandled cast type %d", member->_type);
 				break;
 			}
 		}
 		break;
 	case CHUNKREF:
 		{
-			Common::String src = var.u.cref->source.eval().asString();
-			result.type = STRING;
-			if (var.u.cref->start < 0) {
-				result.u.s = new Common::String("");
-			} else {
-				result.u.s = new Common::String(src.substr(var.u.cref->start, var.u.cref->end - var.u.cref->start));
+			Common::U32String src = evalChunkRef(var.u.cref->source);
+			if (var.u.cref->start >= 0) {
+				result = src.substr(var.u.cref->start, var.u.cref->end - var.u.cref->start);
 			}
 		}
 		break;
 	default:
-		warning("varFetch: fetch from non-variable");
+		result = var.asString().decode(Common::kUtf8);
 		break;
 	}
 

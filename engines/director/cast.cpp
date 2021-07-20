@@ -77,7 +77,7 @@ Cast::Cast(Movie *movie, uint16 castLibID, bool isShared) {
 
 	_castArchive = nullptr;
 	_version = 0;
-	_platform = g_director->getPlatform();
+	_platform = Common::kPlatformMacintosh;
 
 	_stageColor = 0;
 
@@ -123,6 +123,12 @@ CastMember *Cast::getCastMember(int castId) {
 		result = _loadedCast->getVal(castId);
 	}
 	return result;
+}
+
+void Cast::releaseCastMemberWidget() {
+	if (_loadedCast)
+		for (Common::HashMap<int, CastMember *>::iterator it = _loadedCast->begin(); it != _loadedCast->end(); ++it)
+			it->_value->releaseWidget();
 }
 
 CastMember *Cast::getCastMemberByName(const Common::String &name) {
@@ -179,29 +185,6 @@ void Cast::setCastMemberModified(int castId) {
 	}
 
 	cast->setModified(true);
-}
-
-Common::String Cast::getString(Common::String str) {
-	if (str.size() == 0) {
-		return str;
-	}
-
-	uint8 f = static_cast<uint8>(str.firstChar());
-
-	if (f == 0) {
-		return "";
-	}
-
-	//TODO: check if all versions need to cut off the first character.
-	if (_version >= kFileVer400) {
-		str.deleteChar(0);
-	}
-
-	if (str.lastChar() == '\x00') {
-		str.deleteLastChar();
-	}
-
-	return str;
 }
 
 void Cast::setArchive(Archive *archive) {
@@ -322,7 +305,13 @@ void Cast::loadCast() {
 
 			debugC(2, kDebugLoading, "****** Loading Palette CLUT, #%d", clutList[i]);
 			PaletteV4 p = loadPalette(*pal);
-			g_director->addPalette(clutList[i] & 0xff, p.palette, p.length);
+
+			// for D2, we are using palette cast member id to resolve palette Id, so we are using lowest 1 bit to represent cast id. see Also loadCastChildren
+			if (_version < kFileVer300)
+				g_director->addPalette(clutList[i] & 0xff, p.palette, p.length);
+			else
+				g_director->addPalette(clutList[i], p.palette, p.length);
+
 			delete pal;
 		}
 	}
@@ -380,7 +369,8 @@ void Cast::loadCast() {
 
 	// External sound files
 	if (_castArchive->hasResource(MKTAG('S', 'T', 'R', ' '), -1)) {
-		debug("STUB: Unhandled 'STR ' resource");
+		loadExternalSound(*(r = _castArchive->getFirstResource(MKTAG('S', 'T', 'R', ' '))));
+		delete r;
 	}
 
 	Common::Array<uint16> vwci = _castArchive->getResourceIDList(MKTAG('V', 'W', 'C', 'I'));
@@ -564,16 +554,16 @@ void Cast::loadCastChildren() {
 
 		switch (tag) {
 		case MKTAG('D', 'I', 'B', ' '):
-			debugC(2, kDebugLoading, "****** Loading 'DIB ' id: %d (%d), %d bytes", imgId, realId, pic->size());
+			debugC(2, kDebugLoading, "****** Loading 'DIB ' id: %d (%d), %d bytes", imgId, realId, (int)pic->size());
 			img = new DIBDecoder();
 			break;
 
 		case MKTAG('B', 'I', 'T', 'D'):
-			debugC(2, kDebugLoading, "****** Loading 'BITD' id: %d (%d), %d bytes", imgId, realId, pic->size());
+			debugC(2, kDebugLoading, "****** Loading 'BITD' id: %d (%d), %d bytes", imgId, realId, (int)pic->size());
 
 			if (w > 0 && h > 0) {
 				if (_version < kFileVer600) {
-					img = new BITDDecoder(w, h, bitmapCast->_bitsPerPixel, bitmapCast->_pitch, _vm->getPalette());
+					img = new BITDDecoder(w, h, bitmapCast->_bitsPerPixel, bitmapCast->_pitch, _vm->getPalette(), _version);
 				} else {
 					img = new Image::BitmapDecoder();
 				}
@@ -644,6 +634,11 @@ void Cast::loadSoundCasts() {
 				audio->loadStream(*sndData);
 				soundCast->_audio = audio;
 				soundCast->_size = sndData->size();
+				if (_version < kFileVer400) {
+					// The looping flag wasn't added to sound cast members until D4.
+					// In older versions, always loop sounds that contain a loop start and end.
+					soundCast->_looping = audio->hasLoopBounds();
+				}
 			}
 			delete sndData;
 		}
@@ -698,7 +693,7 @@ PaletteV4 Cast::loadPalette(Common::SeekableReadStreamEndian &stream) {
 	uint16 index = (steps * 3) - 1;
 	byte *_palette = new byte[index + 1];
 
-	debugC(3, kDebugLoading, "Cast::loadPalette(): %d steps, %d bytes", steps, stream.size());
+	debugC(3, kDebugLoading, "Cast::loadPalette(): %d steps, %d bytes", steps, (int)stream.size());
 
 	if (steps > 256) {
 		warning("Cast::loadPalette(): steps > 256: %d", steps);
@@ -785,6 +780,24 @@ void Cast::loadCastDataVWCR(Common::SeekableReadStreamEndian &stream) {
 			break;
 		}
 		stream.seek(returnPos);
+	}
+}
+
+void Cast::loadExternalSound(Common::SeekableReadStreamEndian &stream) {
+	Common::String str = stream.readString();
+	str.trim();
+	debugC(1, kDebugLoading, "****** Loading External Sound File %s", str.c_str());
+
+	Common::String resPath = g_director->getCurrentPath() + str;
+
+	if (!g_director->_openResFiles.contains(resPath)) {
+		MacArchive *resFile = new MacArchive();
+
+		if (resFile->openFile(resPath)) {
+			g_director->_openResFiles.setVal(resPath, resFile);
+		} else {
+			delete resFile;
+		}
 	}
 }
 
@@ -1057,17 +1070,7 @@ void Cast::loadScriptText(Common::SeekableReadStreamEndian &stream, uint16 id) {
 	/*uint32 unk1 = */ stream.readUint32();
 	uint32 strLen = stream.readUint32();
 	/*uin32 dataLen = */ stream.readUint32();
-	Common::String script;
-
-	for (uint32 i = 0; i < strLen; i++) {
-		byte ch = stream.readByte();
-
-		// Convert Mac line endings
-		if (ch == 0x0d)
-			ch = '\n';
-
-		script += ch;
-	}
+	Common::String script = stream.readString(0, strLen);
 
 	// Check if this is a script. It must start with a comment.
 	// See D2 Interactivity Manual pp.46-47 (Ch.2.11. Using a macro)
@@ -1080,7 +1083,7 @@ void Cast::loadScriptText(Common::SeekableReadStreamEndian &stream, uint16 id) {
 	if (script.contains("\nmenu:") || script.hasPrefix("menu:"))
 		return;
 
-	_lingoArchive->addCode(script.c_str(), kMovieScript, id);
+	_lingoArchive->addCode(script.decode(Common::kMacRoman), kMovieScript, id);
 }
 
 void Cast::dumpScript(const char *script, ScriptType type, uint16 id) {
@@ -1183,7 +1186,7 @@ void Cast::loadCastInfo(Common::SeekableReadStreamEndian &stream, uint16 id) {
 			if (ConfMan.getBool("dump_scripts"))
 				dumpScript(ci->script.c_str(), scriptType, id);
 
-			_lingoArchive->addCode(ci->script.c_str(), scriptType, id, ci->name.c_str());
+			_lingoArchive->addCode(ci->script, scriptType, id, ci->name.c_str());
 		}
 	}
 
@@ -1198,6 +1201,39 @@ void Cast::loadCastInfo(Common::SeekableReadStreamEndian &stream, uint16 id) {
 		_castsScriptIds[ci->scriptId] = id;
 
 	_castsInfo[id] = ci;
+}
+
+Common::CodePage Cast::getPlatformEncoding() {
+	return getEncoding(_platform, _vm->getLanguage());
+}
+
+Common::U32String Cast::decodeString(const Common::String &str) {
+	Common::CodePage encoding = getPlatformEncoding();
+
+	Common::String fixedStr;
+	if (encoding == Common::kWindows1252) {
+		/**
+		 * Director for Windows stores strings in a screwed up version of Mac Roman
+		 * where characters map directly to Windows-1252 characters.
+		 * We need to map this screwed up Mac Roman back to Windows-1252 before using it.
+		 * Comment from FXmp:
+		 *   Note: Some characters are not available in both character sets.
+		 *   However, the bi-directional mapping table below preserves these
+		 *   characters even if they are mapped to a different platform and
+		 *   later re-mapped back to the original platform.
+		 */
+
+		for (uint i = 0; i < str.size(); i++) {
+			if (_macCharsToWin.contains(str[i]))
+				fixedStr += _macCharsToWin[str[i]];
+			else
+				fixedStr += str[i];
+		}
+	} else {
+		fixedStr = str;
+	}
+
+	return fixedStr.decode(encoding);
 }
 
 } // End of namespace Director

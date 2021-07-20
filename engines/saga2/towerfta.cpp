@@ -37,7 +37,7 @@
 #include "saga2/mouseimg.h"
 #include "saga2/patrol.h"
 #include "saga2/weapons.h"
-#include "saga2/loadsave.h"
+#include "saga2/saveload.h"
 #include "saga2/display.h"
 #include "saga2/tile.h"
 
@@ -313,7 +313,7 @@ TERMINATOR(termGUIMessagers) {
 INITIALIZER(initMousePointer) {
 	//pointer.hide();
 	setMouseImage(kMouseArrowImage, 0, 0);
-	return pointer.init(640, 480);
+	return g_vm->_pointer->init(640, 480);
 }
 
 TERMINATOR(termMousePointer) {
@@ -326,7 +326,6 @@ TERMINATOR(termMousePointer) {
 INITIALIZER(initDisplay) {
 	g_vm->_mainPort.setColor(0);            //  fill screen with color
 	drawPage = &g_vm->_mainPort.protoPage;
-	g_vm->_mainPort.setDisplayPage(drawPage);
 	//lightsOut();
 	//g_vm->_mainPort.fillRect( Rect16( 0, 0, screenWidth, screenHeight ) );
 

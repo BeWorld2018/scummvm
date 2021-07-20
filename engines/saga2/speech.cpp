@@ -24,8 +24,6 @@
  *   (c) 1993-1996 The Wyrmkeep Entertainment Co.
  */
 
-#define FORBIDDEN_SYMBOL_ALLOW_ALL // FIXME: Remove
-
 #include "saga2/saga2.h"
 #include "saga2/fta.h"
 #include "saga2/fontlib.h"
@@ -35,7 +33,6 @@
 #include "saga2/grabinfo.h"
 #include "saga2/player.h"
 #include "saga2/annoy.h"
-#include "saga2/savefile.h"
 #include "saga2/cmisc.h"
 #include "saga2/tilemode.h"
 
@@ -74,14 +71,11 @@ int16 buttonWrap(
     int16           &buttonCount,           // returns number of buttons
     char            *text,                  // text to wrap
     int16           width,                  // width of text
-    int16           supressText);
+    int16           supressText,
+    gPort           &textPort);
 
 //-----------------------------------------------------------------------
 //	locals
-
-//  pixelmap which holds the rendered text
-gPixelMap           speechImage;
-gPort               tempTextPort;
 
 //  Temporary: Alarm which determines when speech finishes
 Alarm               speechFinished;
@@ -96,7 +90,7 @@ static TextSpan     speechLineList[64],   // list of speech lines
 int16               speechLineCount,        // count of speech lines
                     speechButtonCount;      // count of speech buttons
 
-static Point16      initialSpeechPosition;  // inital coords of speech
+static StaticPoint16 initialSpeechPosition = {0, 0};  // inital coords of speech
 
 //  Image data for the little "bullet"
 static uint8 BulletData[] = {
@@ -111,7 +105,7 @@ static uint8 BulletData[] = {
 	0x00, 0x00, 0x00, 0x18, 0x18, 0x18, 0x00, 0x00, 0x00, // Row 8
 };
 
-static gStaticImage BulletImage(9, 9, BulletData);
+static StaticPixelMap BulletImage = {{9, 9}, BulletData};
 
 //-----------------------------------------------------------------------
 //	Speech button mode override.
@@ -132,48 +126,47 @@ inline uint32 extendID(int16 smallID) {
    Speech member functions
  * ===================================================================== */
 
-//-----------------------------------------------------------------------
-//	Reconstruct this SpeechTask from an archive buffer
-
-void *Speech::restore(void *buf) {
-	int16   i;
-
+void Speech::read(Common::InSaveFile *in) {
 	//  Restore the sample count and character count
-	sampleCount = *((int16 *)buf);
-	charCount   = *((int16 *)buf + 1);
-	buf = (int16 *)buf + 2;
+	sampleCount = in->readSint16LE();
+	charCount = in->readSint16LE();
 
 	//  Restore the text boundaries
-	bounds = *((Rect16 *)buf);
-	buf = (Rect16 *)buf + 1;
+	bounds.read(in);
 
 	//  Restore the pen color and outline color
-	penColor        = *((uint16 *)buf);
-	outlineColor    = *((uint16 *)buf + 1);
-	buf = (uint16 *)buf + 2;
+	penColor = in->readUint16LE();
+	outlineColor = in->readUint16LE();
 
 	//  Restore the object ID
-	objID = *((ObjectID *)buf);
-	buf = (ObjectID *)buf + 1;
+	objID = in->readUint16LE();
 
 	//  Restore the thread ID
-	thread = *((ThreadID *)buf);
-	buf = (ThreadID *)buf + 1;
+	thread = in->readSint16LE();
 
 	//  Restore the flags
-	speechFlags = *((int16 *)buf);
-	buf = (int16 *)buf + 1;
+	speechFlags = in->readSint16LE();
+
+	debugC(4, kDebugSaveload, "...... sampleCount = %d", sampleCount);
+	debugC(4, kDebugSaveload, "...... charCount = %d", charCount);
+	debugC(4, kDebugSaveload, "...... penColor = %d", penColor);
+	debugC(4, kDebugSaveload, "...... outlineColor = %d", outlineColor);
+	debugC(4, kDebugSaveload, "...... bounds = (%d, %d, %d, %d)",
+	       bounds.x, bounds.y, bounds.width, bounds.height);
+	debugC(4, kDebugSaveload, "...... objID = %d", objID);
+	debugC(4, kDebugSaveload, "...... thread = %d", thread);
+	debugC(4, kDebugSaveload, "...... speechFlags = %d", speechFlags);
 
 	//  Restore the sample ID's
-	for (i = 0; i < sampleCount; i++) {
-		sampleID[i] = *((uint32 *)buf);
-		buf = (uint32 *)buf + 1;
+	for (int i = 0; i < sampleCount; i++) {
+		sampleID[i] = in->readUint32LE();
+		debugC(4, kDebugSaveload, "...... sampleID[%d] = %d", i, sampleID[i]);
 	}
 
 	//  Restore the text
-	memcpy(speechBuffer, buf, charCount);
-	buf = (char *)buf + charCount;
+	in->read(speechBuffer, charCount);
 	speechBuffer[charCount] = '\0';
+	debugC(4, kDebugSaveload, "...... speechBuffer = %s", speechBuffer);
 
 	//  Requeue the speech if needed
 	if (speechFlags & spQueued) {
@@ -181,8 +174,6 @@ void *Speech::restore(void *buf) {
 		speechList.remove(this);
 		speechList._list.push_back(this);
 	}
-
-	return buf;
 }
 
 //-----------------------------------------------------------------------
@@ -201,49 +192,46 @@ int32 Speech::archiveSize(void) {
 	            +   sizeof(char) * charCount;
 }
 
-//-----------------------------------------------------------------------
-//	Archive this SpeechTask in a buffer
-
-void *Speech::archive(void *buf) {
-	int16   i;
-
+void Speech::write(Common::MemoryWriteStreamDynamic *out) {
 	//  Store the sample count and character count
-	*((int16 *)buf)        = sampleCount;
-	*((int16 *)buf + 1)    = charCount;
-	buf = (int16 *)buf + 2;
+	out->writeSint16LE(sampleCount);
+	out->writeSint16LE(charCount);
 
 	//  Store the text boundaries
-	*((Rect16 *)buf) = bounds;
-	buf = (Rect16 *)buf + 1;
+	bounds.write(out);
 
 	//  Store the pen color and outline color
-	*((uint16 *)buf)       = penColor;
-	*((uint16 *)buf + 1)   = outlineColor;
-	buf = (uint16 *)buf + 2;
+	out->writeUint16LE(penColor);
+	out->writeUint16LE(outlineColor);
 
 	//  Store the object's ID
-	*((ObjectID *)buf) = objID;
-	buf = (ObjectID *)buf + 1;
+	out->writeUint16LE(objID);
 
 	//  Store the thread ID
-	*((ThreadID *)buf) = thread;
-	buf = (ThreadID *)buf + 1;
+	out->writeSint16LE(thread);
 
 	//  Store the flags.  NOTE:  Make sure this speech is not stored
 	//  as being active
-	*((int16 *)buf) = speechFlags & ~spActive;
-	buf = (int16 *)buf + 1;
+	out->writeSint16LE(speechFlags & ~spActive);
 
-	for (i = 0; i < sampleCount; i++) {
-		*((uint32 *)buf) = sampleID[i];
-		buf = (uint32 *)buf + 1;
+	debugC(4, kDebugSaveload, "...... sampleCount = %d", sampleCount);
+	debugC(4, kDebugSaveload, "...... charCount = %d", charCount);
+	debugC(4, kDebugSaveload, "...... penColor = %d", penColor);
+	debugC(4, kDebugSaveload, "...... outlineColor = %d", outlineColor);
+	debugC(4, kDebugSaveload, "...... bounds = (%d, %d, %d, %d)",
+	       bounds.x, bounds.y, bounds.width, bounds.height);
+	debugC(4, kDebugSaveload, "...... objID = %d", objID);
+	debugC(4, kDebugSaveload, "...... thread = %d", thread);
+	debugC(4, kDebugSaveload, "...... speechFlags = %d", speechFlags);
+
+	for (int i = 0; i < sampleCount; i++) {
+		out->writeUint32LE(sampleID[i]);
+		debugC(4, kDebugSaveload, "...... sampleID[%d] = %d", i, sampleID[i]);
 	}
 
 	//  Store the text
-	memcpy(buf, speechBuffer, charCount);
-	buf = (char *)buf + charCount;
-
-	return buf;
+	out->write(speechBuffer, charCount);
+	debugC(4, kDebugSaveload, "...... speechBuffer = %s", speechBuffer);
 }
 
 //-----------------------------------------------------------------------
@@ -305,11 +293,11 @@ bool Speech::setupActive(void) {
 //		throw gError( "Could Not Set Talk Animation");
 
 	// Set up temp gport for blitting to bitmap
-	tempTextPort.setStyle(textStyleThickOutline);    // extra Thick Outline
-	tempTextPort.setOutlineColor(outlineColor);      // outline black
-	tempTextPort.setFont(&Amber13Font);              // speech font
-	tempTextPort.setColor(penColor);                 // color of letters
-	tempTextPort.setMode(drawModeMatte);             // insure transparency
+	_textPort.setStyle(textStyleThickOutline);    // extra Thick Outline
+	_textPort.setOutlineColor(outlineColor);      // outline black
+	_textPort.setFont(&Amber13Font);              // speech font
+	_textPort.setColor(penColor);                 // color of letters
+	_textPort.setMode(drawModeMatte);             // insure transparency
 
 	setWidth();
 
@@ -336,19 +324,20 @@ bool Speech::setupActive(void) {
 	                             speechButtonCount,
 	                             speechBuffer,
 	                             bounds.width,
-	                             !g_vm->_speechText && (speechFlags & spHasVoice));
+	                             !g_vm->_speechText && (speechFlags & spHasVoice),
+	                             _textPort);
 
 	//  Compute height of bitmap based on number of lines of text.
 	//  Include 4 for outline width
 	bounds.height =
-	    (speechLineCount * (tempTextPort.font->height + lineLeading))
+	    (speechLineCount * (_textPort.font->height + lineLeading))
 	    + outlineWidth * 2;
 
 	//  Blit to temp bitmap
-	speechImage.size.x = bounds.width;
-	speechImage.size.y = bounds.height;
-	speechImage.data = new uint8[speechImage.bytes()]();
-	tempTextPort.setMap(&speechImage);
+	_speechImage.size.x = bounds.width;
+	_speechImage.size.y = bounds.height;
+	_speechImage.data = new uint8[_speechImage.bytes()]();
+	_textPort.setMap(&_speechImage);
 
 	y = outlineWidth;                       // Plus 2 for Outlines
 	buttonChars = speechButtonList[buttonNum].charWidth;
@@ -360,7 +349,7 @@ bool Speech::setupActive(void) {
 		x   = (bounds.width - speechLineList[i].pixelWidth) / 2
 		      + outlineWidth;
 
-		tempTextPort.moveTo(x, y);
+		_textPort.moveTo(x, y);
 
 		//  Draw each button on the line in turn.
 		while (lineChars > 0) {
@@ -376,26 +365,26 @@ bool Speech::setupActive(void) {
 				if (buttonNum > speechButtonCount) break;
 
 				buttonChars = speechButtonList[buttonNum].charWidth;
-				tempTextPort.setColor(1 + 9);
+				_textPort.setColor(1 + 9);
 
 				//  Blit the little bullet symbol
 				lineChars--;
 				lineText++;
 				buttonChars--;
 
-				tempTextPort.bltPixels(
+				_textPort.bltPixels(
 				    BulletImage, 0, 0,
-				    tempTextPort.penPos.x, tempTextPort.penPos.y + 1,
+				    _textPort.penPos.x, _textPort.penPos.y + 1,
 				    BulletImage.size.x, BulletImage.size.y);
 
-				tempTextPort.move(bulletWidth, 0);
+				_textPort.move(bulletWidth, 0);
 			}
 
 			//  Compute how much of this button is on this line.
 			dChars = MIN(lineChars, buttonChars);
 
 			//  Draw however much of this button is on this line.
-			tempTextPort.drawText(lineText, dChars);
+			_textPort.drawText(lineText, dChars);
 
 			//  Move forward by dChars
 			lineChars -= dChars;
@@ -403,7 +392,7 @@ bool Speech::setupActive(void) {
 			lineText += dChars;
 		}
 
-		y += tempTextPort.font->height + lineLeading;
+		y += _textPort.font->height + lineLeading;
 	}
 
 	if (speechButtonCount > 0) {
@@ -443,7 +432,8 @@ void Speech::setWidth() {
 	                             speechButtonCount_,
 	                             speechBuffer,
 	                             defaultWidth,
-	                             !g_vm->_speechText && (speechFlags & spHasVoice));
+	                             !g_vm->_speechText && (speechFlags & spHasVoice),
+	                             _textPort);
 
 	//  If it's more than 3 lines, then use the max line width.
 
@@ -453,7 +443,8 @@ void Speech::setWidth() {
 		                             speechButtonCount_,
 		                             speechBuffer,
 		                             maxWidth,
-		                             !g_vm->_speechText && (speechFlags & spHasVoice));
+		                             !g_vm->_speechText && (speechFlags & spHasVoice),
+		                             _textPort);
 	}
 
 
@@ -469,7 +460,7 @@ void Speech::setWidth() {
 //-----------------------------------------------------------------------
 //	Calculate the position of the speech, emanating from the actor.
 
-bool Speech::calcPosition(Point16 &p) {
+bool Speech::calcPosition(StaticPoint16 &p) {
 	GameObject      *obj = GameObject::objectAddress(objID);
 	TilePoint       tp = obj->getWorldLocation();
 
@@ -492,17 +483,19 @@ bool Speech::calcPosition(Point16 &p) {
 //	Draw the text on the back buffer
 
 bool Speech::displayText(void) {
-	Point16         p;
+	StaticPoint16 p;
 
 	//  If there are button in the speech, then don't scroll the
 	//  speech along with the display. Otherwise, calculate the
 	//  position from the actor.
-	if (speechButtonCount > 0) p = initialSpeechPosition;
-	else if (!calcPosition(p)) return false;
+	if (speechButtonCount > 0)
+		p = initialSpeechPosition;
+	else if (!calcPosition(p))
+		return false;
 
 	//  Blit to the port
-	backPort.setMode(drawModeMatte);
-	backPort.bltPixels(speechImage,
+	g_vm->_backPort.setMode(drawModeMatte);
+	g_vm->_backPort.bltPixels(_speechImage,
 	                   0, 0,
 	                   p.x + fineScroll.x,
 	                   p.y + fineScroll.y,
@@ -528,8 +521,8 @@ void Speech::dispose(void) {
 		wakeUpThread(thread, selectedButton);
 
 		//  De-allocate the speech data
-		delete[] speechImage.data;
-		speechImage.data = NULL;
+		delete[] _speechImage.data;
+		_speechImage.data = NULL;
 
 		//  Clear the number of active buttons
 		speechLineCount = speechButtonCount = 0;
@@ -562,7 +555,7 @@ void updateSpeech(void) {
 			sp->setupActive();
 
 			//  If speech failed to set up, then skip it
-			if (speechImage.data == NULL) {
+			if (sp->_speechImage.data == NULL) {
 				sp->dispose();
 				return;
 			}
@@ -610,68 +603,6 @@ void deleteSpeech(ObjectID id) {         // voice sound sample ID
 	while ((sp = speechList.findSpeech(id)) != NULL) sp->dispose();
 }
 
-int16 TextWrap(
-    char            *lines[],               // array of line pointers
-    int16           line_chars[],           // character count of each line
-    int16           line_pixels[],          // pixel count of each line
-    char            *text,                  // the text to render
-    int16           width                   // width to constrain text
-) {
-	int16           i,                      // loop counter
-	                line_start,             // start of current line
-	                last_space,             // last space encountered
-	                last_space_pixels = 0,  // pixel pos of last space
-	                pixel_len,              // pixel length of line
-	                line_count = 0;         // number of lines
-
-	lines[line_count] = text;
-	last_space = -1;
-	line_start = 0;
-	pixel_len = 0;
-
-	//  For each character in the string, check for word wrap
-
-	for (i = 0; ; i++) {
-		uint8           c = text[i];
-
-//			REM: Translate from foreign character set if needed...
-//		c = TranslationTable[c];
-
-		if (c == '\n' || c == '\r' || c == '\0') {  // if deliberate end of line
-			line_chars[line_count] = i - line_start;  //
-			line_pixels[line_count] = pixel_len;
-			line_start = i + 1;
-			if (c == '\0') {
-				line_count++;
-				break;
-			}
-			lines[++line_count] = &text[line_start];
-			last_space = -1;
-			pixel_len = 0;
-			continue;
-		} else if (c == ' ') {
-			last_space = i;
-			last_space_pixels = pixel_len;
-		}
-
-		pixel_len +=
-		    tempTextPort.font->charKern[c] + tempTextPort.font->charSpace[c];
-
-		if (pixel_len > width - 2 && last_space > 0) {
-			line_chars[line_count] = last_space - line_start;
-			line_pixels[line_count] = last_space_pixels;
-			line_start = last_space + 1;
-			lines[++line_count] = &text[line_start];
-
-			last_space = -1;
-			pixel_len = 0;
-
-			i = line_start - 1;
-		}
-	}
-	return line_count;
-}
-
 //-----------------------------------------------------------------------
 //	This routine does a word-wrap on the input text, and also checks for
 //	the '@' symbol to see if there are any embedded buttons in the text.
@@ -682,7 +613,8 @@ int16 buttonWrap(
     int16           &buttonCount,           // returns number of buttons
     char            *text,                  // text to wrap
     int16           width,                  // width of text
-    int16           supressText) {
+    int16           supressText,
+    gPort           &textPort) {
 	int16           i,                      // loop counter
 	                line_start,             // start of current line
 	                last_space,             // last space encountered
@@ -744,8 +676,8 @@ int16 buttonWrap(
 
 			//  Add to pixel length
 			charPixels
-			    = tempTextPort.font->charKern[c]
-			      + tempTextPort.font->charSpace[c];
+			    = textPort.font->charKern[c]
+			      + textPort.font->charSpace[c];
 		}
 
 		linePixels += charPixels;
@@ -800,8 +732,8 @@ int16 buttonWrap(
 			} else { //  Any other character
 				//  Add to pixel length
 				charPixels
-				    = tempTextPort.font->charKern[c]
-				      + tempTextPort.font->charSpace[c];
+				    = textPort.font->charKern[c]
+				      + textPort.font->charSpace[c];
 			}
 
 			buttonPixels += charPixels;
@@ -826,7 +758,8 @@ int16 pickButton(
     int16           numLines,               // number of line breaks
     TextSpan        *buttonList,            // indicates where button breaks are
     int16           buttonCount,            // number of buttons
-    int16           width) {                // width of rectangle
+    int16           width,
+    gPort           textPort) {                // width of rectangle
 	int16           pickLine,
 	                pickPixels = 0,
 	                centerWidth;
@@ -836,7 +769,7 @@ int16 pickButton(
 	        ||  buttonCount < 1)                // no buttons defined
 		return 0;
 
-	pickLine = pt.y / (tempTextPort.font->height + lineLeading);
+	pickLine = pt.y / (textPort.font->height + lineLeading);
 	if (pickLine >= numLines) return 0;
 
 	//  Strange algorithm:
@@ -936,31 +869,24 @@ SpeechTaskList::SpeechTaskList(void) {
 	lockFlag = false;
 }
 
-//-----------------------------------------------------------------------
-//	Constructor -- reconstruct from archive buffer
-
-SpeechTaskList::SpeechTaskList(void **buf) {
-	void        *bufferPtr = *buf;
-
-	int16       i,
-	            count;
+SpeechTaskList::SpeechTaskList(Common::InSaveFile *in) {
+	int16 count;
 
 	lockFlag = false;
 
 	//  Get the speech count
-	count = *((int16 *)bufferPtr);
-	bufferPtr = (int16 *)bufferPtr + 1;
+	count = in->readSint16LE();
+	debugC(3, kDebugSaveload, "... count = %d", count);
 
 	//  Restore the speeches
-	for (i = 0; i < count; i++) {
+	for (int i = 0; i < count; i++) {
 		Speech *sp = new Speech;
 		assert(sp != NULL);
+		debugC(3, kDebugSaveload, "Loading Speech %d", i++);
 
 		_inactiveList.push_back(sp);
-		bufferPtr = sp->restore(bufferPtr);
+		sp->read(in);
 	}
-
-	*buf = bufferPtr;
 }
 
 //-----------------------------------------------------------------------
@@ -984,31 +910,29 @@ int32 SpeechTaskList::archiveSize(void) {
 	return size;
 }
 
-//-----------------------------------------------------------------------
-//	Create an archive of the speech tasks in an archive buffer
-
-void *SpeechTaskList::archive(void *buf) {
-	int16       count = 0;
+void SpeechTaskList::write(Common::MemoryWriteStreamDynamic *out) {
+	int i = 0;
+	int16 count = 0;
 
 	count += _list.size() + _inactiveList.size();
 
 	//  Store speech count
-	*((int16 *)buf) = count;
-	buf = (int16 *)buf + 1;
+	out->writeSint16LE(count);
+	debugC(3, kDebugSaveload, "... count = %d", count);
 
 	//  Store active speeches
 	for (Common::List<Speech *>::iterator it = _list.begin();
 			it != _list.end(); ++it) {
-		buf = (*it)->archive(buf);
+		debugC(3, kDebugSaveload, "Saving Speech %d (active)", i++);
+		(*it)->write(out);
 	}
 
 	//  Store inactive speeches
 	for (Common::List<Speech *>::iterator it = _inactiveList.begin();
 			it != _inactiveList.end(); ++it) {
-		buf = (*it)->archive(buf);
+		debugC(3, kDebugSaveload, "Saving Speech %d (inactive)", i++);
+		(*it)->write(out);
 	}
-
-	return buf;
 }
 
 //-----------------------------------------------------------------------
@@ -1114,7 +1038,7 @@ void Speech::remove(void) {
 //-----------------------------------------------------------------------
 //	AppFunc for handling clicks on speech
 
-int16 pickSpeechButton(Point16 mouse) {
+int16 pickSpeechButton(Point16 mouse, int16 size, gPort &textPort) {
 	Point16 p = mouse - initialSpeechPosition;
 
 	p.x -= kTileRectX;
@@ -1123,7 +1047,8 @@ int16 pickSpeechButton(Point16 mouse) {
 	return pickButton(p,
 	                  speechLineList, speechLineCount,
 	                  speechButtonList, speechButtonCount,
-	                  speechImage.size.x);
+	                  size,
+	                  textPort);
 }
 
 APPFUNC(cmdClickSpeech) {
@@ -1139,7 +1064,7 @@ APPFUNC(cmdClickSpeech) {
 	case gEventMouseDown:
 
 		if ((sp = speechList.currentActive()) != NULL) {
-			sp->selectedButton = pickSpeechButton(ev.mouse);
+			sp->selectedButton = pickSpeechButton(ev.mouse, sp->_speechImage.size.x, sp->_textPort);
 		}
 		break;
 
@@ -1160,55 +1085,26 @@ void initSpeechTasks(void) {
 	new (&speechList) SpeechTaskList;
 }
 
-//-----------------------------------------------------------------------
-//	Save the speech tasks in a save file
+void saveSpeechTasks(Common::OutSaveFile *outS) {
+	debugC(2, kDebugSaveload, "Saving Speech Tasks");
 
-void saveSpeechTasks(SaveFileConstructor &saveGame) {
-	int32   archiveBufSize;
-	void    *archiveBuffer;
-
-	archiveBufSize = speechList.archiveSize();
-
-	archiveBuffer = malloc(archiveBufSize);
-	if (archiveBuffer == NULL)
-		error("Unable to allocate speech task archive buffer");
-
-	speechList.archive(archiveBuffer);
-
-	saveGame.writeChunk(
-	    MakeID('S', 'P', 'C', 'H'),
-	    archiveBuffer,
-	    archiveBufSize);
-
-	free(archiveBuffer);
+	outS->write("SPCH", 4);
+	CHUNK_BEGIN;
+	speechList.write(out);
+	CHUNK_END;
 }
 
-//-----------------------------------------------------------------------
-//	Load the speech tasks from a save file
+void loadSpeechTasks(Common::InSaveFile *in, int32 chunkSize) {
+	debugC(2, kDebugSaveload, "Loading Speech Tasks");
 
-void loadSpeechTasks(SaveFileReader &saveGame) {
 	//  If there is no saved data, simply call the default constructor
-	if (saveGame.getChunkSize() == 0) {
+	if (chunkSize == 0) {
 		new (&speechList) SpeechTaskList;
 		return;
 	}
 
-	void    *archiveBuffer;
-	void    *bufferPtr;
-
-	archiveBuffer = malloc(saveGame.getChunkSize());
-	if (archiveBuffer == NULL)
-		error("Unable to allocate speech task archive buffer");
-
-	//  Read the archived task stack data
-	saveGame.read(archiveBuffer, saveGame.getChunkSize());
-
-	bufferPtr = archiveBuffer;
-
 	//  Reconstruct stackList from archived data
-	new (&speechList) SpeechTaskList(&bufferPtr);
-
-	free(archiveBuffer);
+	new (&speechList) SpeechTaskList(in);
 }
 
 //-----------------------------------------------------------------------

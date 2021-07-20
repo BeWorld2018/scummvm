@@ -37,8 +37,6 @@ namespace Saga2 {
  * ======================================================================= */
 
 class GameWorld;
-class SaveFileConstructor;
-class SaveFileReader;
 
 const uint16 unlimitedCapacity = maxuint16;
 
@@ -115,22 +113,16 @@ struct ObjectData {
 #include "common/pack-end.h"
 
 void     initActors(void);
-void     saveActors(SaveFileConstructor &);
-void     saveActors(Common::OutSaveFile *out);
-void     loadActors(SaveFileReader &);
+void     saveActors(Common::OutSaveFile *outS);
 void     loadActors(Common::InSaveFile *in);
 void     cleanupActors(void);
 class GameObject {
 
 	friend void     initWorlds(void);
-	friend void     saveWorlds(SaveFileConstructor &);
-	friend void     loadWorlds(SaveFileReader &);
 	friend void     cleanupWorlds(void);
 
 	friend void     initObjects(void);
-	friend void     saveObjects(SaveFileConstructor &);
 	friend void     saveObjects(Common::OutSaveFile *out);
-	friend void     loadObjects(SaveFileReader &);
 	friend void     loadObjects(Common::InSaveFile *in);
 	friend void     cleanupObjects(void);
 
@@ -181,27 +173,23 @@ protected:
 	ProtoObj        *prototype;             // object that defines our behavior
 public:
 	ObjectData _data;
+	uint _index;
+	bool _godmode;
 	//  Default constructor
 	GameObject(void);
 
 	//  Constructor -- initial construction
 	GameObject(const ResourceGameObject &res);
 
-	//  Constructor -- reconstruct from archive buffer
-	GameObject(void **buf);
-
 	GameObject(Common::InSaveFile *in);
 
-	void read(Common::InSaveFile *in);
+	void read(Common::InSaveFile *in, bool expandProto);
 
 	//  Return the number of bytes needed to archive this object in
 	//  a buffer
 	int32 archiveSize(void);
 
-	//  Archive the object in a buffer
-	void *archive(void *buf);
-
-	void write(Common::OutSaveFile *out);
+	void write(Common::MemoryWriteStreamDynamic *out, bool expandProto);
 
 	//  returns the address of the object based on the ID, and this
 	//  includes accounting for actors.
@@ -209,6 +197,8 @@ public:
 
 	//  Converts object ID into prototype address...
 	static ProtoObj *protoAddress(ObjectID id);
+
+	static int32 nameIndexToID(uint16 ind);
 
 	//  object creation and deletion
 	static GameObject *newObject(void);      // get a newly created object
@@ -413,6 +403,9 @@ public:
 	    int8                dice = 0,
 	    uint8               sides = 1,
 	    int8                perDieMod = 0) {
+		if (_godmode)
+			return false;
+
 		return  prototype->acceptDamage(
 		            thisID(),
 		            enactor,
@@ -750,7 +743,7 @@ public:
 	void activate(void);
 	void deactivate(void);
 
-	void write(Common::OutSaveFile *out);
+	void write(Common::MemoryWriteStreamDynamic *out);
 	void read(Common::InSaveFile *in);
 };
 
@@ -786,15 +779,11 @@ public:
 	//  Initial constructor
 	GameWorld(int16 map);
 
-	//  Constructor -- reconstruct from archive buffer
-	GameWorld(void **buf);
-
 	GameWorld(Common::SeekableReadStream *stream);
 
 	~GameWorld();
 
 	int32 archiveSize(void);
-	void *archive(void *buf);
 
 	void cleanup(void);
 
@@ -854,8 +843,6 @@ inline int16 GameObject::getMapNum(void) {
 class ActiveRegion {
 
 	friend void initActiveRegions(void);
-	friend void saveActiveRegions(SaveFileConstructor &saveGame);
-	friend void loadActiveRegions(SaveFileReader &saveGame);
 	friend void cleanupActiveRegions(void);
 
 	friend class ActiveRegionObjectIterator;
@@ -867,7 +854,15 @@ class ActiveRegion {
 
 public:
 
+	enum {
+		kActiveRegionSize = 22
+	};
+
+	ActiveRegion() : anchor(0), worldID(0) {}
 	void update(void);
+
+	void read(Common::InSaveFile *in);
+	void write(Common::MemoryWriteStreamDynamic *out);
 
 	//  Return the current region in tile point coords
 	TileRegion getRegion(void) {
@@ -894,8 +889,8 @@ void updateActiveRegions(void);
 ActiveRegion *getActiveRegion(PlayerActorID id);
 
 void initActiveRegions(void);
-void saveActiveRegions(SaveFileConstructor &saveGame);
-void loadActiveRegions(SaveFileReader &saveGame);
+void saveActiveRegions(Common::OutSaveFile *outS);
+void loadActiveRegions(Common::InSaveFile *in);
 inline void cleanupActiveRegions(void) {}
 
 /* ======================================================================= *
@@ -1358,7 +1353,7 @@ bool lineOfSight(
 bool objObscured(GameObject *testObj);
 
 //  Determine which object mouse pointer is picking
-ObjectID pickObject(const Point16 &mouse, StaticTilePoint &objPos);
+ObjectID pickObject(const StaticPoint32 &mouse, StaticTilePoint &objPos);
 
 //  Create enchantment attach it to object
 ObjectID EnchantObject(
@@ -1398,10 +1393,10 @@ void cleanupObjectSoundFXTable(void);
 void initTempActorCount(void);
 
 //  Save the array of temp actor counts
-void saveTempActorCount(SaveFileConstructor &saveGame);
+void saveTempActorCount(Common::OutSaveFile *outS);
 
 //  Load the array of temp actor counts
-void loadTempActorCount(SaveFileReader &saveGame);
+void loadTempActorCount(Common::InSaveFile *in, int32 chunkSize);
 
 //  Cleanup the array to temp actor counts
 void cleanupTempActorCount(void);
@@ -1419,11 +1414,9 @@ uint16 getTempActorCount(uint16 protoNum);
 void initWorlds(void);
 
 //  Save worlds to the save file
-void saveWorlds(SaveFileConstructor &saveGame);
-void saveWorlds(Common::OutSaveFile *out);
+void saveWorlds(Common::OutSaveFile *outS);
 
 //  Load worlds from the save file
-void loadWorlds(SaveFileReader &saveGame);
 void loadWorlds(Common::InSaveFile *in);
 
 //  Cleanup game worlds
@@ -1433,11 +1426,9 @@ void cleanupWorlds(void);
 void initObjects(void);
 
 //  Save the objects to the save file
-void saveObjects(SaveFileConstructor &saveGame);
-void saveObjects(Common::OutSaveFile *out);
+void saveObjects(Common::OutSaveFile *outS);
 
 //  Load the objects from the save file
-void loadObjects(SaveFileReader &saveGame);
 void loadObjects(Common::InSaveFile *in);
 
 //  Cleanup object list

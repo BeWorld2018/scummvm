@@ -24,8 +24,6 @@
  *   (c) 1993-1996 The Wyrmkeep Entertainment Co.
  */
 
-#define FORBIDDEN_SYMBOL_ALLOW_ALL // FIXME: Remove
-
 #include "common/config-manager.h"
 #include "audio/mixer.h"
 
@@ -33,7 +31,7 @@
 #include "saga2/intrface.h"
 #include "saga2/grequest.h"
 #include "saga2/gtextbox.h"
-#include "saga2/loadsave.h"
+#include "saga2/saveload.h"
 #include "saga2/script.h"
 #include "saga2/audio.h"
 
@@ -46,7 +44,6 @@
 #include "saga2/palette.h"
 
 #include "saga2/fontlib.h"
-#include "saga2/savefile.h"
 
 namespace Saga2 {
 
@@ -86,13 +83,6 @@ APPFUNCV(cmdSaveVolumeSettings);
 extern BackWindow       *mainWindow;
 extern audioInterface   *audio;
 extern bool fullInitialized;
-
-/* ===================================================================== *
-   External functions
- * ===================================================================== */
-
-void getSaveFileName(int16 saveNo, char *fileName);
-
 
 /* ===================================================================== *
    Dialog Controls
@@ -204,12 +194,6 @@ static const StaticRect saveLoadWindowRect = {
 
 // indirections
 
-static const StaticRect *saveLoadPanelRects[kNumSaveLoadPanels] = {
-	&SLTopPanel,
-	&SLMidPanel,
-	&SLBotPanel
-};
-
 static const StaticRect *saveLoadButtonRects[kNumSaveLoadBtns] = {
 	&SLQuitBtnRect,
 	&SLBtnRect,
@@ -226,9 +210,9 @@ static const StaticRect *saveLoadTextRects[kNumSaveLoadTexts] = {
 // save/load dialog window decorations
 
 static StaticWindow saveWindowDecorations[kNumSaveLoadPanels] = {
-	{*(saveLoadPanelRects[0]), NULL, SLTopPanelResID},
-	{*(saveLoadPanelRects[1]), NULL, SLMidPanelResID},
-	{*(saveLoadPanelRects[2]), NULL, SLBotPanelResID}
+	{SLTopPanel, NULL, SLTopPanelResID},
+	{SLMidPanel, NULL, SLMidPanelResID},
+	{SLBotPanel, NULL, SLBotPanelResID}
 };
 
 
@@ -435,12 +419,6 @@ static const StaticRect optionsWindowRect = {
 
 // indirections
 
-static const StaticRect *optionsPanelRects[kNumOptionsPanels] = {
-	&optTopPanel,
-	&optMidPanel,
-	&optBotPanel
-};
-
 static const StaticRect *optionsButtonRects[] = {
 	&optResumeRect,
 	&optSaveRect,
@@ -468,9 +446,9 @@ static const StaticRect *optionsTextRects[] = {
 // options dialog window decorations
 
 static StaticWindow optionsDecorations[kNumOptionsPanels] = {
-	{*(optionsPanelRects[0]), NULL, optTopPanelResID},
-	{*(optionsPanelRects[1]), NULL, optMidPanelResID},
-	{*(optionsPanelRects[2]), NULL, optBotPanelResID}
+	{optTopPanel, NULL, optTopPanelResID},
+	{optMidPanel, NULL, optMidPanelResID},
+	{optBotPanel, NULL, optBotPanelResID}
 };
 
 
@@ -623,10 +601,11 @@ void destroyFileFields(char **strings) {
 }
 
 bool getSaveName(int8 saveNo, SaveFileHeader &header) {
-	Common::InSaveFile *in = g_system->getSavefileManager()->openForLoading(getSaveFileName(saveNo));
+	Common::String fname = g_vm->getSavegameFile(saveNo);
+	Common::InSaveFile *in = g_system->getSavefileManager()->openForLoading(fname);
 
 	if (!in) {
-		debugC(1, kDebugSaveload, "Unable to load save %d (%s)", saveNo, getSaveFileName(saveNo).c_str());
+		debugC(1, kDebugSaveload, "Unable to load save %d (%s)", saveNo, fname.c_str());
 		return false;
 	}
 
@@ -754,14 +733,11 @@ int16 FileDialog(int16 fileProcess) {
 		GameMode::update();
 
 	win->invalidate();
-	//win->draw();
-	//G_BASE.setActive(textBox);
 
 	EventLoop(rInfo.running, true);
 
-
 	// remove the window all attatched controls
-	if (win) delete win;
+	delete win;
 	win = nullptr;
 
 	// unload all image arrays
@@ -941,7 +917,7 @@ int16 OptionsDialog(bool disableSaveResume) {
 	g_vm->saveConfig();
 
 	// remove the window all attatched controls
-	if (win) delete win;
+	delete win;
 	win = nullptr;
 
 	// unload all image arrays
@@ -982,7 +958,7 @@ int16 OptionsDialog(bool disableSaveResume) {
 	} else {
 		if (deferredSaveFlag) {
 #ifdef IMMEDIATE_SAVE
-			saveGameState(deferredLoadID, deferredSaveName);
+			g_vm->saveGameState(deferredLoadID, deferredSaveName, false);
 #endif
 		}
 		mainWindow->invalidate(&optionsWindowRect);
@@ -1659,7 +1635,7 @@ APPFUNC(cmdFileSave) {
 
 #ifndef IMMEDIATE_SAVE
 		// save game
-		saveGameState(saveIndex, textBox->getLine(saveIndex));
+		g_vm->saveGameState(saveIndex, textBox->getLine(saveIndex), false);
 #else
 		deferredLoadID = saveIndex;
 		deferredSaveFlag = true;

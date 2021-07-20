@@ -126,23 +126,31 @@ bool Sprite::shouldHilite() {
 	if (_puppet)
 		return false;
 
-	if (_ink == kInkTypeMatte) {
-		if (g_director->getVersion() < 300)
-			return true;
-		if (isQDShape())
-			return true;
-	}
-
 	if (_cast) {
-		// we have our own check for button, thus we don't need it here
-		if (_cast->_type == kCastButton)
+		// Restrict to bitmap cast members.
+		// Buttons also hilite on click, but they have their own check.
+		if (_cast->_type != kCastBitmap)
 			return false;
-		CastMemberInfo *castInfo = _cast->getInfo();
-		if (castInfo)
-			return castInfo->autoHilite;
+
+		if (g_director->getVersion() >= 300) {
+			// The Auto Hilite flag was introduced in D3.
+
+			CastMemberInfo *castInfo = _cast->getInfo();
+			if (castInfo)
+				return castInfo->autoHilite;
+
+			// If there's no cast info, fall back to the old matte check.
+			// In D4 or above, there should always be a cast info,
+			// but in D3, it is not present unless you set a cast member's
+			// name, script, etc.
+		}
+	} else {
+		// QuickDraw shapes may also hilite on click.
+		if (!isQDShape())
+			return false;
 	}
 
-	return false;
+	return _ink == kInkTypeMatte;
 }
 
 uint16 Sprite::getPattern() {
@@ -179,26 +187,50 @@ void Sprite::setPattern(uint16 pattern) {
 	}
 }
 
+bool Sprite::checkSpriteType() {
+	// check whether the sprite type match the cast type
+	// if it doesn't match, then we treat it as transparent
+	// this happens in warlock-mac data/stambul/c up
+	if (_spriteType == kBitmapSprite && _cast->_type != kCastBitmap) {
+		warning("Sprite::checkSpriteType: Didn't render sprite due to the sprite type mismatch with cast type");
+		return false;
+	}
+	return true;
+}
+
 void Sprite::setCast(CastMemberID memberID) {
-	CastMember *member = _movie->getCastMember(memberID);
+	/**
+	 * There are two things we need to take into account here:
+	 *   1. The cast member's type
+	 *   2. The sprite's type
+	 * If the two types do not align, the sprite should not render.
+	 * 
+	 * Before D4, you needed to manually set a sprite's type along
+	 * with its castNum.
+	 * 
+	 * Starting in D4, setting a sprite's castNum also set its type
+	 * to an appropriate default.
+	 */
+
 	_castId = memberID;
+	_cast = _movie->getCastMember(_castId);
+	if (g_director->getVersion() >= 400)
+		_spriteType = kCastMemberSprite;
 
-	if (memberID.member == 0)
-		return;
-
-	if (member) {
-		_cast = member;
-
-		if (_cast->_type == kCastText &&
-			(_spriteType == kButtonSprite ||
-				 _spriteType == kCheckboxSprite ||
-				 _spriteType == kRadioButtonSprite)) {
-			// WORKAROUND: In D2/D3 there can be text casts that have button
-			// information set in the sprite.
-			warning("Sprite::setCast(): Working around D2/3 button glitch");
-
-			_cast->_type = kCastButton;
-			((TextCastMember *)_cast)->_buttonType = (ButtonType)(_spriteType - 8);
+	if (_cast) {
+		if (g_director->getVersion() >= 400) {
+			// Set the sprite type to be more specific ONLY for bitmap or text.
+			// Others just use the generic kCastMemberSprite in D4.
+			switch (_cast->_type) {
+			case kCastBitmap:
+				_spriteType = kBitmapSprite;
+				break;
+			case kCastText:
+				_spriteType = kTextSprite;
+				break;
+			default:
+				break;
+			}
 		}
 
 		// TODO: Respect sprite width/height settings. Need to determine how to read
@@ -214,8 +246,10 @@ void Sprite::setCast(CastMemberID memberID) {
 			_width = dims.width();
 			_height = dims.height();
 		}
+
 	} else {
-		warning("Sprite::setCast(): %s has null member", memberID.asString().c_str());
+		if (_castId.member != 0)
+			warning("Sprite::setCast(): %s is null", memberID.asString().c_str());
 	}
 }
 

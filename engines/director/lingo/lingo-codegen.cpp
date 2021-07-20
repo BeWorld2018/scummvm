@@ -93,14 +93,14 @@ LingoCompiler::LingoCompiler() {
 	_hadError = false;
 }
 
-ScriptContext *LingoCompiler::compileAnonymous(const char *code) {
+ScriptContext *LingoCompiler::compileAnonymous(const Common::U32String &code) {
 	debugC(1, kDebugCompile, "Compiling anonymous lingo\n"
-			"***********\n%s\n\n***********", code);
+			"***********\n%s\n\n***********", code.encode().c_str());
 
 	return compileLingo(code, nullptr, kNoneScript, CastMemberID(0, 0), "[anonymous]", true);
 }
 
-ScriptContext *LingoCompiler::compileLingo(const char *code, LingoArchive *archive, ScriptType type, CastMemberID id, const Common::String &scriptName, bool anonymous) {
+ScriptContext *LingoCompiler::compileLingo(const Common::U32String &code, LingoArchive *archive, ScriptType type, CastMemberID id, const Common::String &scriptName, bool anonymous) {
 	_assemblyArchive = archive;
 	_assemblyAST = nullptr;
 	ScriptContext *mainContext = _assemblyContext = new ScriptContext(scriptName, archive, type, id.member);
@@ -110,19 +110,12 @@ ScriptContext *LingoCompiler::compileLingo(const char *code, LingoArchive *archi
 	_linenumber = _colnumber = 1;
 	_hadError = false;
 
-	if (!strncmp(code, "menu:", 5) || scumm_strcasestr(code, "\nmenu:")) {
-		debugC(1, kDebugCompile, "Parsing menu");
-		parseMenu(code);
-
-		return nullptr;
-	}
-
 	// Preprocess the code for ease of the parser
-	Common::String codeNorm = codePreprocessor(code, archive, type, id);
-	code = codeNorm.c_str();
+	Common::String codeNorm = codePreprocessor(code, archive, type, id).encode(Common::kUtf8);
+	const char *utf8Code = codeNorm.c_str();
 
 	// Parse the Lingo and build an AST
-	parse(code);
+	parse(utf8Code);
 	if (!_assemblyAST) {
 		delete _assemblyContext;
 		delete _currentAssembly;
@@ -381,10 +374,6 @@ void LingoCompiler::updateLoopJumps(uint nextTargetPos, uint exitTargetPos) {
 		WRITE_UINT32(&jmpOffset, exitTargetPos - exitRepeatPos);
 		(*_currentAssembly)[exitRepeatPos + 1] = jmpOffset; 
 	}
-}
-
-void LingoCompiler::parseMenu(const char *code) {
-	warning("STUB: parseMenu");
 }
 
 /* ScriptNode */
@@ -1006,7 +995,8 @@ bool LingoCompiler::visitTellNode(TellNode *node) {
 /* WhenNode */
 
 bool LingoCompiler::visitWhenNode(WhenNode *node) {
-	COMPILE(node->code);
+	code1(LC::c_stringpush);
+	codeString(node->code->c_str());
 	code1(LC::c_whencode);
 	codeString(node->event->c_str());
 	return true;

@@ -23,7 +23,11 @@
 #include "common/file.h"
 #include "common/keyboard.h"
 #include "common/memstream.h"
+#include "common/tokenizer.h"
 #include "common/zlib.h"
+
+#include "graphics/macgui/macwindowmanager.h"
+#include "graphics/macgui/macfontmanager.h"
 
 #include "director/director.h"
 #include "director/movie.h"
@@ -212,48 +216,6 @@ Common::String CastMemberID::asString() const {
 	return res;
 }
 
-// This is table for built-in Macintosh font lowercasing.
-// '.' means that the symbol should be not changed, rest
-// of the symbols are stripping the diacritics
-// The table starts from 0x80
-//
-// TODO: Check it for correctness.
-static char lowerCaseConvert[] =
-"aacenoua" // 80
-"aaaaacee" // 88
-"eeiiiino" // 90
-"oooouuuu" // 98
-"........" // a0
-".......o" // a8
-"........" // b0
-".......o" // b8
-"........" // c0
-".. aao.." // c8
-"--.....y";// d0-d8
-
-Common::String toLowercaseMac(const Common::String &s) {
-	Common::String res;
-	const unsigned char *p = (const unsigned char *)s.c_str();
-
-	while (*p) {
-		if (*p >= 0x80 && *p <= 0xd8) {
-			if (lowerCaseConvert[*p - 0x80] != '.')
-				res += lowerCaseConvert[*p - 0x80];
-			else
-				res += *p;
-		} else if (*p < 0x80) {
-			res += tolower(*p);
-		} else {
-			warning("Unacceptable symbol in toLowercaseMac: %c", *p);
-
-			res += *p;
-		}
-		p++;
-	}
-
-	return res;
-}
-
 Common::String convertPath(Common::String &path) {
 	if (path.empty())
 		return path;
@@ -265,7 +227,7 @@ Common::String convertPath(Common::String &path) {
 	Common::String res;
 	uint32 idx = 0;
 
-	if (path.hasPrefix("::")) { // Root of the filesystem
+	if (path.hasPrefix("::")) { // Parent directory
 		res = "..\\";
 		idx = 2;
 	} else if (path.hasPrefix("@:")) { // Root of the game
@@ -324,12 +286,26 @@ Common::String getPath(Common::String path, Common::String cwd) {
 
 bool testPath(Common::String &path, bool directory) {
 	if (directory) {
-		// TOOD: This directory-searching branch only works for one level from the
-		// current directory, but it fixes current game loading issues.
-		if (path.contains('/'))
-			return false;
+		Common::FSNode d = Common::FSNode(*g_director->getGameDataDir());
 
-		Common::FSNode d = Common::FSNode(*g_director->getGameDataDir()).getChild(path);
+		// check for the game data dir
+		if (!path.contains("/") && path.equalsIgnoreCase(d.getName())) {
+			path = "";
+			return true;
+		}
+
+		Common::StringTokenizer directory_list(path, "/");
+
+		if (d.getChild(directory_list.nextToken()).exists()) {
+			// then this part is for the "relative to current directory"
+			// we find the child directory recursively
+			directory_list.reset();
+			while (!directory_list.empty() && d.exists())
+				d = d.getChild(directory_list.nextToken());
+		} else {
+			return false;
+		}
+
 		return d.exists();
 	}
 
@@ -342,11 +318,11 @@ bool testPath(Common::String &path, bool directory) {
 	return false;
 }
 
+// if we are finding the file path, then this func will return exactly the executable file path
+// if we are finding the directory path, then we will get the path relative to the game data dir.
+// e.g. if we have game data dir as SSwarlock, then "A:SSwarlock" -> "", "A:SSwarlock:Nav" -> "Nav"
 Common::String pathMakeRelative(Common::String path, bool recursive, bool addexts, bool directory) {
 	Common::String initialPath(path);
-
-	if (testPath(initialPath, directory))
-		return initialPath;
 
 	if (recursive) // first level
 		initialPath = convertPath(initialPath);
@@ -748,6 +724,59 @@ Common::Platform platformFromID(uint16 id) {
 		break;
 	}
 	return Common::kPlatformUnknown;
+}
+
+bool isButtonSprite(SpriteType spriteType) {
+	return spriteType == kButtonSprite || spriteType == kCheckboxSprite || spriteType == kRadioButtonSprite;
+}
+
+Common::CodePage getEncoding(Common::Platform platform, Common::Language language) {
+	switch (language) {
+	case Common::JA_JPN:
+		return Common::kWindows932; // Shift JIS
+	default:
+		break;
+	}
+	return (platform == Common::kPlatformWindows)
+				? Common::kWindows1252
+				: Common::kMacRoman;
+}
+
+Common::CodePage detectFontEncoding(Common::Platform platform, uint16 fontId) {
+	return getEncoding(platform, g_director->_wm->_fontMan->getFontLanguage(fontId));
+}
+
+int charToNum(Common::u32char_type_t ch) {
+	Common::String encodedCh = Common::U32String(ch).encode(g_director->getPlatformEncoding());
+	int res = 0;
+	while (encodedCh.size()) {
+		res = (res << 8) | (byte)encodedCh.firstChar();
+		encodedCh.deleteChar(0);
+	}
+	return res;
+}
+
+Common::u32char_type_t numToChar(int num) {
+	Common::String encodedCh;
+	while (num) {
+		encodedCh.insertChar((char)(num & 0xFF), 0);
+		num >>= 8;
+	}
+	Common::U32String str = encodedCh.decode(g_director->getPlatformEncoding());
+	return str.lastChar();
+}
+
+int compareStrings(const Common::String &s1, const Common::String &s2) {
+	Common::U32String u32S1 = s1.decode(Common::kUtf8);
+	Common::U32String u32S2 = s2.decode(Common::kUtf8);
+	const Common::u32char_type_t *p1 = u32S1.c_str();
+	const Common::u32char_type_t *p2 = u32S2.c_str();
+	uint32 c1, c2;
+	while ((c1 = charToNum(*p1)) && (c2 = charToNum(*p2)) && c1 == c2) {
+		p1++;
+		p2++;
+	}
+	return c1 - c2;
 }
 
 } // End of namespace Director

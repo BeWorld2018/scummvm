@@ -66,6 +66,7 @@ Movie::Movie(Window *window) {
 	_currentHandlingChannelId = 0;
 
 	_version = 0;
+	_platform = Common::kPlatformMacintosh;
 	_allowOutdatedLingo = false;
 
 	_movieArchive = nullptr;
@@ -235,7 +236,7 @@ void Movie::loadFileInfo(Common::SeekableReadStreamEndian &stream) {
 		_cast->dumpScript(_script.c_str(), kMovieScript, 0);
 
 	if (!_script.empty())
-		_cast->_lingoArchive->addCode(_script.c_str(), kMovieScript, 0);
+		_cast->_lingoArchive->addCode(_script, kMovieScript, 0);
 
 	_changedBy = fileInfo.strings[1].readString();
 	_createdBy = fileInfo.strings[2].readString();
@@ -379,6 +380,24 @@ Symbol Movie::getHandler(const Common::String &name) {
 			return _sharedCast->_lingoArchive->functionHandlers[name];
 	}
 	return Symbol();
+}
+
+Common::String InfoEntry::readString(bool pascal) {
+	Common::String res;
+
+	if (len == 0)
+		return res;
+
+	uint start = pascal ? 1 : 0; // skip length for Pascal string
+
+	Common::String encodedStr;
+	for (uint i = start; i < len; i++) {
+		if (!Common::isCntrl(data[i]) || Common::isSpace(data[i]))
+			encodedStr += data[i];
+	}
+
+	// FIXME: Use the case which contains this string, not the main cast.
+	return g_director->getCurrentMovie()->getCast()->decodeString(encodedStr).encode(Common::kUtf8);
 }
 
 } // End of namespace Director

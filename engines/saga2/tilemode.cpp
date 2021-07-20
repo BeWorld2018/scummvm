@@ -24,8 +24,6 @@
  *   (c) 1993-1996 The Wyrmkeep Entertainment Co.
  */
 
-#define FORBIDDEN_SYMBOL_ALLOW_ALL // FIXME: Remove
-
 #include "saga2/saga2.h"
 #include "saga2/tilemode.h"
 #include "saga2/tile.h"
@@ -43,7 +41,8 @@
 #include "saga2/dispnode.h"
 #include "saga2/uidialog.h"
 #include "saga2/contain.h"
-#include "saga2/savefile.h"
+#include "saga2/saveload.h"
+#include "saga2/oncall.h"
 
 namespace Saga2 {
 
@@ -152,13 +151,10 @@ bool                nudge = false;
 extern ObjectID     viewCenterObject;
 
 static struct _delayedNavigation {
-	TilePoint   walkToPos;
+	StaticTilePoint walkToPos;
 	bool        pathFindFlag;
 	Alarm       delay;
-
-	_delayedNavigation(void) : pathFindFlag(false) {}
-
-} delayedNavigation;
+} delayedNavigation = {{0, 0, 0}, false, {0, 0}};
 static bool navigationDelayed = false;
 
 //Tile Mode GameMode Object
@@ -178,14 +174,13 @@ GameMode            TileMode = {
 
 const int           runThreshhold = 32;
 
-extern gToolBase    G_BASE;
 extern Alarm        frameAlarm;             // 10 fps frame rate
 Alarm               updateAlarm,            // max coord update rate
                     pathFindAlarm;          // mouse click rate for path find
 bool                tileLockFlag;           // true if tile mode is locked
 
 GameObject          *mouseObject = NULL;    // object being dragged
-Point32             lastMousePos;           // Last mouse position over map
+StaticPoint32       lastMousePos = {0, 0};           // Last mouse position over map
 static bool         mousePressed,           // State of mouse button
        clickActionDone = true; // Flag indication wether current
 // mouse click action is done
@@ -610,48 +605,41 @@ void initTileModeState(void) {
 	combatPaused = false;
 }
 
-//-----------------------------------------------------------------------
-//	Save the tile mode state to a save file
-
-void saveTileModeState(SaveFileConstructor &saveGame) {
-	int32       size = 0;
+void saveTileModeState(Common::OutSaveFile *outS) {
+	debugC(2, kDebugSaveload, "Saving TileModeState");
 
 	assert(uiKeysEnabled);
 
-	//  Compute the number of bytes needed
-	size +=     sizeof(aggressiveActFlag)
-	            +   sizeof(inCombat)
-	            +   sizeof(combatPaused);
-	if (aggressiveActFlag)
-		size += sizeof(timeOfLastAggressiveAct);
+	outS->write("TMST", 4);
+	CHUNK_BEGIN;
+	out->writeUint16LE(aggressiveActFlag);
+	out->writeUint16LE(inCombat);
+	out->writeUint16LE(combatPaused);
 
-	//  Create the chunk and write the data
-	saveGame.newChunk(MakeID('T', 'M', 'S', 'T'), size);
-	saveGame.write(&aggressiveActFlag, sizeof(aggressiveActFlag));
-	saveGame.write(&inCombat, sizeof(inCombat));
-	saveGame.write(&combatPaused, sizeof(combatPaused));
-	if (aggressiveActFlag) {
-		saveGame.write(
-		    &timeOfLastAggressiveAct,
-		    sizeof(timeOfLastAggressiveAct));
-	}
+	debugC(3, kDebugSaveload, "... aggressiveActFlag = %d", aggressiveActFlag);
+	debugC(3, kDebugSaveload, "... inCombat = %d", inCombat);
+	debugC(3, kDebugSaveload, "... combatPaused = %d", combatPaused);
+
+	if (aggressiveActFlag)
+		timeOfLastAggressiveAct.write(out);
+	CHUNK_END;
 }
 
-//-----------------------------------------------------------------------
-//	Load the tile mode state from a save file
-
-void loadTileModeState(SaveFileReader &saveGame) {
+void loadTileModeState(Common::InSaveFile *in) {
 	assert(uiKeysEnabled);
 
 	//  Simply read in the data
-	saveGame.read(&aggressiveActFlag, sizeof(aggressiveActFlag));
-	saveGame.read(&inCombat, sizeof(inCombat));
-	saveGame.read(&combatPaused, sizeof(combatPaused));
-	if (aggressiveActFlag) {
-		saveGame.read(
-		    &timeOfLastAggressiveAct,
-		    sizeof(timeOfLastAggressiveAct));
-	}
+	aggressiveActFlag = in->readUint16LE();
+	inCombat = in->readUint16LE();
+	combatPaused = in->readUint16LE();
+
+	debugC(3, kDebugSaveload, "... aggressiveActFlag = %d", aggressiveActFlag);
+	debugC(3, kDebugSaveload, "... inCombat = %d", inCombat);
+	debugC(3, kDebugSaveload, "... combatPaused = %d", combatPaused);
+
+	if (aggressiveActFlag)
+		timeOfLastAggressiveAct.read(in);
+
 	tileLockFlag = false;
 }
 
@@ -692,6 +680,7 @@ void TileModeCleanup(void) {
 	tileControls->enable(false);
 
 	freeAllTileBanks();
+	delete g_vm->_tileImageBanks;
 
 //	freePalette();
 
@@ -701,7 +690,7 @@ void TileModeCleanup(void) {
 	delete tileMapControl;
 
 //	This Fixes the mousePanel That's not set up
-	G_BASE.mousePanel = NULL;
+	g_vm->_toolBase->mousePanel = NULL;
 
 	mainWindow->removeDecorations();
 }
@@ -787,7 +776,7 @@ void TileModeHandleTask(void) {
 		}
 
 
-		if (G_BASE.isMousePanel(tileMapControl)) {
+		if (g_vm->_toolBase->isMousePanel(tileMapControl)) {
 			//  If mouse is near edge of screen, then run.
 			runFlag =       lastMousePos.x < runThreshhold
 			                ||  lastMousePos.x >= kTileRectWidth - runThreshhold
@@ -1073,7 +1062,7 @@ static APPFUNC(cmdClickTileMap) {
 			g_vm->_mouseInfo->setText(NULL);
 			g_vm->_mouseInfo->clearGauge();
 		}
-		lastMousePos = ev.mouse;
+		lastMousePos.set(ev.mouse.x, ev.mouse.y);
 		break;
 
 	case gEventMouseDown:

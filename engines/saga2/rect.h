@@ -27,6 +27,8 @@
 #ifndef SAGA2_RECT_H
 #define SAGA2_RECT_H
 
+#include "common/memstream.h"
+
 namespace Saga2 {
 
 struct StaticPoint16 {
@@ -55,7 +57,7 @@ public:
 	}
 
 	void load(Common::SeekableReadStream *stream);
-	void write(Common::OutSaveFile *out);
+	void write(Common::MemoryWriteStreamDynamic *out);
 
 	// Point16 operators
 	friend Point16 operator+ (Point16 a, Point16 b) {
@@ -138,6 +140,11 @@ typedef Point16         Extent16;               // contains width and height
 
 struct StaticPoint32 {
 	int32 x, y;
+
+	void set(int16 nx, int16 ny) {
+		x = nx;
+		y = ny;
+	}
 
 	friend StaticPoint32 operator+ (StaticPoint32 a, StaticPoint32 b) {
 		StaticPoint32 p;
@@ -313,6 +320,9 @@ public:
 		width = r.width;
 		height = r.height;
 	}
+
+	void read(Common::InSaveFile *in);
+	void write(Common::MemoryWriteStreamDynamic *out);
 
 	//  Rect16 operators
 

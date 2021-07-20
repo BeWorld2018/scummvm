@@ -89,8 +89,8 @@ bool isBrotherDead(PlayerActorID brotherID);
 void updateIndicators(void);
 
 void initUIState(void);
-void saveUIState(SaveFileConstructor &saveGame);
-void loadUIState(SaveFileReader &saveGame);
+void saveUIState(Common::OutSaveFile *outS);
+void loadUIState(Common::InSaveFile *in);
 void cleanupUIState(void);
 
 //  Varargs function to write to the status line.
@@ -239,7 +239,7 @@ private:
 
 public:
 	CStatusLine(gPanelList &, const Rect16 &, const char *, gFont *,
-	            int16, textPallete &, int32, int16, AppFunc *cmd = NULL);
+	            int16, textPallete, int32, int16, AppFunc *cmd = NULL);
 	~CStatusLine(void);
 
 	void setLine(char *, uint32 frameTime);
@@ -293,7 +293,6 @@ public:
 
 class CMassWeightIndicator {
 private:
-	static Common::List<CMassWeightIndicator *> indList;
 	GameObject *containerObject;
 
 public:
